@@ -13,6 +13,7 @@ variable "cluster_name" {
 variable "kubernetes_version" {
   type        = string
   description = "Versao do Kubernetes a ser usada pelo cluster EKS."
+  default     = "1.35"
 }
 
 variable "azs" {

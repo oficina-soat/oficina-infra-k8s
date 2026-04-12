@@ -27,10 +27,12 @@ Como o laboratório recria essas credenciais a cada sessão, esses secrets preci
 - `EKS_CLUSTER_NAME`
 - `KUBERNETES_VERSION`
 
+Se `KUBERNETES_VERSION` nao for informado em `vars`, o workflow usa o default `1.35`.
+
 Variáveis opcionais:
 
 - `IMAGE_REF`: referencia completa da imagem. Se informado, tem prioridade sobre `IMAGE_TAG`
-- `IMAGE_TAG`: tag da imagem. Quando `IMAGE_REF` nao for informado, o workflow monta `${ecr_repository_url}:${IMAGE_TAG}` automaticamente a partir do output do Terraform
+- `IMAGE_TAG`: tag da imagem. Quando `IMAGE_REF` nao for informado, o workflow monta `${ecr_repository_url}:${IMAGE_TAG}` automaticamente a partir do output do Terraform. Default: `latest`
 - `EKS_ACCESS_PRINCIPAL_ARN`
 - `EKS_CLUSTER_ROLE_ARN`
 - `EKS_NODE_ROLE_ARN`

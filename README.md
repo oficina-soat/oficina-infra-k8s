@@ -87,7 +87,7 @@ Variáveis principais:
 
 - `region`: região AWS do laboratório
 - `cluster_name`: nome do cluster EKS
-- `kubernetes_version`: versão do Kubernetes
+- `kubernetes_version`: versão do Kubernetes. Default do projeto: `1.35`
 - `eks_cluster_role_arn` e `eks_node_role_arn`: roles pré-existentes do laboratório para o control plane e os nodes; por default o ambiente `lab` usa as roles padrão do laboratório
 - `eks_access_principal_arn`: principal que receberá acesso administrativo ao cluster; por default o ambiente `lab` usa `arn:aws:iam::998977374439:role/voclabs`
 - `instance_type`, `desired_size`, `min_size` e `max_size`: dimensionamento do managed node group
@@ -165,10 +165,12 @@ Valores esperados no Environment:
 - `AWS_SECRET_ACCESS_KEY`: credencial AWS em `secrets`
 - `AWS_SESSION_TOKEN`: opcional, mas necessário quando o laboratório entregar credenciais temporárias
 
+Se `KUBERNETES_VERSION` nao for informado em `vars`, o workflow usa o default `1.35`.
+
 Valores opcionais no Environment:
 
 - `IMAGE_REF`: referencia completa da imagem. Se informado, tem prioridade sobre `IMAGE_TAG`
-- `IMAGE_TAG`: tag da imagem. Quando `IMAGE_REF` nao for informado, o workflow monta `${ecr_repository_url}:${IMAGE_TAG}` automaticamente a partir do output do Terraform
+- `IMAGE_TAG`: tag da imagem. Quando `IMAGE_REF` nao for informado, o workflow monta `${ecr_repository_url}:${IMAGE_TAG}` automaticamente a partir do output do Terraform. Default: `latest`
 - `EKS_ACCESS_PRINCIPAL_ARN`
 - `EKS_CLUSTER_ROLE_ARN`
 - `EKS_NODE_ROLE_ARN`
