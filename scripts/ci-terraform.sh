@@ -280,7 +280,7 @@ eks_cluster_exists() {
 
 fail_missing_remote_state_with_existing_resources() {
   if eks_cluster_exists; then
-    echo "O cluster EKS ${EKS_CLUSTER_NAME} ja existe, mas o state remoto ${EFFECTIVE_TF_STATE_BUCKET}/${TF_STATE_KEY} nao foi encontrado. O runner perdeu o state local de execucoes anteriores. Configure TF_STATE_BUCKET para reaproveitar um state existente ou remova/importe os recursos antes de novo apply." >&2
+    echo "O cluster EKS ${EKS_CLUSTER_NAME} ja existe, mas o state remoto ${EFFECTIVE_TF_STATE_BUCKET}/${TF_STATE_KEY} nao foi encontrado. O runner perdeu o state local de execucoes anteriores. Para recuperar com seguranca, execute o workflow manual 'Cleanup Orphan EKS Lab', depois rode 'Terraform Apply Lab' para recriar a infraestrutura com state remoto persistido, e so entao volte ao workflow de deploy." >&2
     exit 1
   fi
 }
