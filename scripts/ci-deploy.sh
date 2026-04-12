@@ -9,6 +9,7 @@ TERRAFORM_DIR="${TERRAFORM_DIR:-${REPO_ROOT}/terraform/environments/lab}"
 AWS_REGION="${AWS_REGION:-}"
 EKS_CLUSTER_NAME="${EKS_CLUSTER_NAME:-}"
 IMAGE_REF="${IMAGE_REF:-}"
+IMAGE_TAG="${IMAGE_TAG:-}"
 TF_STATE_BUCKET="${TF_STATE_BUCKET:-}"
 TF_STATE_KEY="${TF_STATE_KEY:-oficina/lab/terraform.tfstate}"
 TF_STATE_REGION="${TF_STATE_REGION:-${AWS_REGION}}"
@@ -44,6 +45,26 @@ require_non_empty() {
     echo "Variavel obrigatoria ausente: ${name}" >&2
     exit 1
   fi
+}
+
+resolve_image_ref() {
+  if [[ -n "${IMAGE_REF}" ]]; then
+    return
+  fi
+
+  require_non_empty "${IMAGE_TAG}" "IMAGE_TAG"
+
+  local repository_url=""
+  repository_url="$(terraform -chdir="${TERRAFORM_DIR}" output -raw ecr_repository_url)"
+
+  if [[ -z "${repository_url}" ]]; then
+    echo "Nao foi possivel obter ecr_repository_url do Terraform para montar IMAGE_REF." >&2
+    exit 1
+  fi
+
+  IMAGE_REF="${repository_url}:${IMAGE_TAG}"
+  export IMAGE_REF
+  log "IMAGE_REF resolvido automaticamente para ${IMAGE_REF}."
 }
 
 create_backend_override() {
@@ -96,7 +117,6 @@ aws_bucket_exists() {
 
 require_non_empty "${AWS_REGION}" "AWS_REGION"
 require_non_empty "${EKS_CLUSTER_NAME}" "EKS_CLUSTER_NAME"
-require_non_empty "${IMAGE_REF}" "IMAGE_REF"
 require_non_empty "${TF_VAR_kubernetes_version:-}" "TF_VAR_kubernetes_version"
 
 if [[ -n "${TF_STATE_BUCKET}" ]]; then
@@ -129,6 +149,8 @@ else
 fi
 
 terraform -chdir="${TERRAFORM_DIR}" apply -input=false -auto-approve
+
+resolve_image_ref
 
 aws eks update-kubeconfig --region "${AWS_REGION}" --name "${EKS_CLUSTER_NAME}"
 
