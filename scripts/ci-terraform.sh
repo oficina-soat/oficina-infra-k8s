@@ -55,6 +55,27 @@ normalize_optional_envs() {
   unset_if_empty "TF_VAR_terraform_shared_data_bucket_name"
 }
 
+terraform_state_manages_ecr_repository() {
+  terraform -chdir="${TERRAFORM_DIR}" state list 2>/dev/null | grep -q '^module\.ecr\.aws_ecr_repository\.app\[0\]$'
+}
+
+aws_ecr_repository_exists() {
+  aws ecr describe-repositories --repository-names "${TF_VAR_ecr_repository_name}" >/dev/null 2>&1
+}
+
+set_ecr_repository_mode() {
+  if terraform_state_manages_ecr_repository; then
+    log "Repositorio ECR ${TF_VAR_ecr_repository_name} ja esta no state deste ambiente; mantendo gerenciamento pelo Terraform."
+    export TF_VAR_create_ecr_repository="true"
+  elif aws_ecr_repository_exists; then
+    log "Repositorio ECR ${TF_VAR_ecr_repository_name} ja existe fora do state deste ambiente; reutilizando sem tentar recriar."
+    export TF_VAR_create_ecr_repository="false"
+  else
+    log "Repositorio ECR ${TF_VAR_ecr_repository_name} ainda nao existe; habilitando criacao automatica."
+    export TF_VAR_create_ecr_repository="true"
+  fi
+}
+
 create_backend_override() {
   if [[ ! -f "${BACKEND_S3_TEMPLATE}" ]]; then
     echo "Template de backend S3 nao encontrado: ${BACKEND_S3_TEMPLATE}" >&2
@@ -134,6 +155,7 @@ run_apply() {
       log "Bucket ${TF_STATE_BUCKET:-} ainda nao existe; executando bootstrap local para criar o bucket."
       export TF_VAR_create_terraform_shared_data_bucket="true"
       terraform_init_local
+      set_ecr_repository_mode
       terraform -chdir="${TERRAFORM_DIR}" apply -input=false -auto-approve
 
       log "Migrando o state local para o backend S3 em ${TF_STATE_BUCKET:-}."
@@ -144,6 +166,7 @@ run_apply() {
     terraform_init_local
   fi
 
+  set_ecr_repository_mode
   terraform -chdir="${TERRAFORM_DIR}" apply -input=false -auto-approve
 }
 
@@ -173,6 +196,7 @@ run_destroy() {
     terraform_init_local
   fi
 
+  set_ecr_repository_mode
   terraform -chdir="${TERRAFORM_DIR}" destroy -input=false -auto-approve
 }
 
