@@ -63,7 +63,7 @@ variable "eks_node_role_arn" {
 variable "eks_access_principal_arn" {
   type        = string
   description = "Principal que recebe acesso administrativo ao cluster. Se omitido, o Terraform tenta usar a identidade atual."
-  default     = "arn:aws:iam::998977374439:role/voclabs"
+  default     = null
   nullable    = true
 
   validation {
