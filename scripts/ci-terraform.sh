@@ -289,11 +289,11 @@ run_apply() {
   EFFECTIVE_TF_STATE_BUCKET="$(resolve_effective_backend_bucket)"
 
   if aws_bucket_exists; then
-    create_backend_override
     export TF_VAR_terraform_shared_data_bucket_name="${EFFECTIVE_TF_STATE_BUCKET}"
 
     if remote_state_exists; then
       log "Bucket ${EFFECTIVE_TF_STATE_BUCKET} e state remoto encontrados; configurando backend remoto."
+      create_backend_override
       terraform_init_remote
 
       if terraform_state_manages_shared_bucket; then
@@ -314,6 +314,7 @@ run_apply() {
       terraform -chdir="${TERRAFORM_DIR}" apply -input=false -auto-approve
 
       log "Migrando o state local para o backend S3 em ${EFFECTIVE_TF_STATE_BUCKET}."
+      create_backend_override
       terraform_migrate_state_remote
     fi
   else
@@ -338,7 +339,6 @@ run_destroy() {
   EFFECTIVE_TF_STATE_BUCKET="$(resolve_effective_backend_bucket)"
 
   if aws_bucket_exists; then
-    create_backend_override
     export TF_VAR_terraform_shared_data_bucket_name="${EFFECTIVE_TF_STATE_BUCKET}"
 
     if ! remote_state_exists; then
@@ -347,6 +347,7 @@ run_destroy() {
     fi
 
     log "Bucket ${EFFECTIVE_TF_STATE_BUCKET} existe; carregando state do backend remoto."
+    create_backend_override
     terraform_init_remote
 
     if terraform_state_manages_shared_bucket; then
