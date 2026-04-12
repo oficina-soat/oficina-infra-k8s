@@ -9,6 +9,7 @@ O projeto provisiona a base da nuvem e publica a aplicação com:
 - repositório Amazon ECR opcional para a imagem da aplicação
 - manifests Kubernetes organizados com `kustomize` em `base`, `components`, `addons` e `overlays`
 - workflow de GitHub Actions para aplicar Terraform e fazer deploy no cluster após merge em branch protegida
+- workflows manuais de GitHub Actions para `terraform apply` e `terraform destroy` sem depender de novo deploy da aplicação
 
 ## O que este projeto não cria
 
@@ -150,6 +151,11 @@ Para acesso local:
 
 O workflow [`.github/workflows/deploy-lab.yml`](.github/workflows/deploy-lab.yml) executa em todo `push`, mas só faz deploy quando a ref de destino é uma branch protegida. Na prática, isso cobre o merge do PR para a branch protegida.
 
+Além dele, o repositório expõe dois workflows manuais:
+
+- [`.github/workflows/terraform-apply-lab.yml`](.github/workflows/terraform-apply-lab.yml): executa apenas o `terraform apply`
+- [`.github/workflows/terraform-destroy-lab.yml`](.github/workflows/terraform-destroy-lab.yml): executa apenas o `terraform destroy`, com confirmação explícita
+
 O job usa o GitHub Environment `lab` para centralizar `vars` e `secrets`.
 
 O workflow tambem aceita `organization secrets/variables` e `repository secrets/variables` com os mesmos nomes. O GitHub resolve isso por precedencia: `environment` sobrescreve `repository`, que sobrescreve `organization`.
@@ -211,6 +217,12 @@ O workflow:
 - executa o deploy da aplicação no cluster
 
 Sem `TF_STATE_BUCKET`, o workflow usa state local temporário no runner. Isso só serve para execuções efemeras, porque não preserva o state entre execuções.
+
+## Operacoes manuais de Terraform
+
+Use o workflow `Terraform Apply Lab` quando quiser reprovisionar apenas a infraestrutura, sem redeploy da aplicacao.
+
+Use o workflow `Terraform Destroy Lab` quando quiser remover a infraestrutura manualmente. Esse workflow exige o valor `DESTROY` no campo de confirmação. Se o bucket S3 de backend fizer parte do state desse ambiente, o workflow migra o state para backend local antes do `destroy`, para conseguir apagar o bucket tambem.
 
 ## Validações recomendadas
 
