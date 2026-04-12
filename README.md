@@ -160,7 +160,6 @@ Valores esperados no Environment:
 
 - `AWS_REGION`
 - `EKS_CLUSTER_NAME`
-- `IMAGE_REF`
 - `KUBERNETES_VERSION`
 - `AWS_ACCESS_KEY_ID`: credencial AWS em `secrets`
 - `AWS_SECRET_ACCESS_KEY`: credencial AWS em `secrets`
@@ -168,6 +167,8 @@ Valores esperados no Environment:
 
 Valores opcionais no Environment:
 
+- `IMAGE_REF`: referencia completa da imagem. Se informado, tem prioridade sobre `IMAGE_TAG`
+- `IMAGE_TAG`: tag da imagem. Quando `IMAGE_REF` nao for informado, o workflow monta `${ecr_repository_url}:${IMAGE_TAG}` automaticamente a partir do output do Terraform
 - `EKS_ACCESS_PRINCIPAL_ARN`
 - `EKS_CLUSTER_ROLE_ARN`
 - `EKS_NODE_ROLE_ARN`
@@ -202,6 +203,7 @@ Se `TF_STATE_BUCKET` apontar para um bucket que ja existe, o workflow reutiliza 
 O workflow:
 
 - inicializa e aplica o Terraform em `terraform/environments/lab`
+- monta `IMAGE_REF` automaticamente com o output `ecr_repository_url` quando apenas `IMAGE_TAG` for informado
 - atualiza o kubeconfig do cluster EKS
 - opcionalmente cria o secret `oficina-database-env`
 - executa o deploy da aplicação no cluster

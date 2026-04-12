@@ -21,6 +21,7 @@ jobs:
       AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
       EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME || 'simple-eks' }}
       IMAGE_REF: ${{ vars.IMAGE_REF }}
+      IMAGE_TAG: ${{ vars.IMAGE_TAG }}
       DEPLOY_KEYCLOAK: ${{ vars.DEPLOY_KEYCLOAK || 'true' }}
       REGENERATE_JWT: ${{ vars.REGENERATE_JWT || 'true' }}
       TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
@@ -74,7 +75,6 @@ jobs:
           required_vars=(
             AWS_REGION
             EKS_CLUSTER_NAME
-            IMAGE_REF
             TF_VAR_kubernetes_version
           )
 
@@ -84,6 +84,11 @@ jobs:
               exit 1
             fi
           done
+
+          if [[ -z "${IMAGE_REF:-}" && -z "${IMAGE_TAG:-}" ]]; then
+            echo "Informe IMAGE_REF ou IMAGE_TAG em vars/secrets do GitHub para definir a imagem da aplicacao." >&2
+            exit 1
+          fi
 
           if [[ -z "${TF_STATE_BUCKET:-}" ]]; then
             echo "Aviso: TF_STATE_BUCKET ausente; o workflow usara state local temporario neste runner." >&2
