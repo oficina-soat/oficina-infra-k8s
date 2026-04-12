@@ -66,6 +66,18 @@ aws_caller_account_id() {
   aws sts get-caller-identity --query 'Account' --output text
 }
 
+resolve_shared_bucket_name() {
+  if [[ -n "${TF_VAR_terraform_shared_data_bucket_name:-}" ]]; then
+    printf '%s\n' "${TF_VAR_terraform_shared_data_bucket_name:-}"
+    return
+  fi
+
+  printf 'tf-shared-%s-%s-%s\n' \
+    "${TF_VAR_cluster_name}" \
+    "$(aws_caller_account_id)" \
+    "${TF_VAR_region}"
+}
+
 resolve_role_arn_by_name_fragment() {
   local fragment="$1"
   aws iam list-roles \
@@ -166,6 +178,27 @@ set_ecr_repository_mode() {
   fi
 }
 
+terraform_state_manages_shared_bucket_resource() {
+  terraform -chdir="${TERRAFORM_DIR}" state list 2>/dev/null | grep -q '^module\.terraform_shared_data_bucket\[0\]\.aws_s3_bucket\.this$'
+}
+
+set_shared_bucket_mode() {
+  local shared_bucket_name=""
+  shared_bucket_name="$(resolve_shared_bucket_name)"
+  export TF_VAR_terraform_shared_data_bucket_name="${shared_bucket_name}"
+
+  if terraform_state_manages_shared_bucket_resource; then
+    log "Bucket compartilhado ${shared_bucket_name} ja esta no state deste ambiente; mantendo gerenciamento pelo Terraform."
+    export TF_VAR_create_terraform_shared_data_bucket="true"
+  elif aws s3api head-bucket --bucket "${shared_bucket_name}" >/dev/null 2>&1; then
+    log "Bucket compartilhado ${shared_bucket_name} ja existe fora do state deste ambiente; reutilizando sem tentar recriar."
+    export TF_VAR_create_terraform_shared_data_bucket="false"
+  else
+    log "Bucket compartilhado ${shared_bucket_name} ainda nao existe; habilitando criacao automatica."
+    export TF_VAR_create_terraform_shared_data_bucket="true"
+  fi
+}
+
 create_backend_override() {
   if [[ ! -f "${BACKEND_S3_TEMPLATE}" ]]; then
     echo "Template de backend S3 nao encontrado: ${BACKEND_S3_TEMPLATE}" >&2
@@ -244,6 +277,7 @@ run_apply() {
     else
       log "Bucket ${TF_STATE_BUCKET:-} ainda nao existe; executando bootstrap local para criar o bucket."
       export TF_VAR_create_terraform_shared_data_bucket="true"
+      export TF_VAR_terraform_shared_data_bucket_name="${TF_STATE_BUCKET:-}"
       terraform_init_local
       set_ecr_repository_mode
       terraform -chdir="${TERRAFORM_DIR}" apply -input=false -auto-approve
@@ -254,8 +288,14 @@ run_apply() {
   else
     log "TF_STATE_BUCKET ausente; usando backend local em ${TERRAFORM_DIR}/terraform.tfstate."
     terraform_init_local
+    set_shared_bucket_mode
   fi
 
+  if [[ -n "${TF_STATE_BUCKET:-}" ]]; then
+    export TF_VAR_terraform_shared_data_bucket_name="${TF_STATE_BUCKET:-}"
+  else
+    set_shared_bucket_mode
+  fi
   set_ecr_repository_mode
   terraform -chdir="${TERRAFORM_DIR}" apply -input=false -auto-approve
 }
@@ -284,8 +324,14 @@ run_destroy() {
   else
     log "TF_STATE_BUCKET ausente; usando backend local em ${TERRAFORM_DIR}/terraform.tfstate para destroy."
     terraform_init_local
+    set_shared_bucket_mode
   fi
 
+  if [[ -n "${TF_STATE_BUCKET:-}" ]]; then
+    export TF_VAR_terraform_shared_data_bucket_name="${TF_STATE_BUCKET:-}"
+  else
+    set_shared_bucket_mode
+  fi
   set_ecr_repository_mode
   terraform -chdir="${TERRAFORM_DIR}" destroy -input=false -auto-approve
 }
