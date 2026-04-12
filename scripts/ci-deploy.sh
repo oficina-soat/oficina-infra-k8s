@@ -47,6 +47,25 @@ require_non_empty() {
   fi
 }
 
+unset_if_empty() {
+  local name="$1"
+
+  if [[ -v "${name}" && -z "${!name}" ]]; then
+    unset "${name}"
+  fi
+}
+
+normalize_optional_envs() {
+  unset_if_empty "IMAGE_REF"
+  unset_if_empty "K8S_DATABASE_ENV_FILE"
+  unset_if_empty "TF_STATE_BUCKET"
+  unset_if_empty "TF_STATE_DYNAMODB_TABLE"
+  unset_if_empty "TF_VAR_azs"
+  unset_if_empty "TF_VAR_public_subnet_cidrs"
+  unset_if_empty "TF_VAR_cluster_endpoint_public_access_cidrs"
+  unset_if_empty "TF_VAR_terraform_shared_data_bucket_name"
+}
+
 resolve_image_ref() {
   if [[ -n "${IMAGE_REF}" ]]; then
     return
@@ -114,6 +133,8 @@ terraform_state_manages_shared_bucket() {
 aws_bucket_exists() {
   aws s3api head-bucket --bucket "${TF_STATE_BUCKET}" >/dev/null 2>&1
 }
+
+normalize_optional_envs
 
 require_non_empty "${AWS_REGION}" "AWS_REGION"
 require_non_empty "${EKS_CLUSTER_NAME}" "EKS_CLUSTER_NAME"
