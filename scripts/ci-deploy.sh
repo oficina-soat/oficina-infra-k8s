@@ -55,7 +55,7 @@ normalize_optional_envs() {
 }
 
 resolve_image_ref() {
-  if [[ -n "${IMAGE_REF}" ]]; then
+  if [[ -n "${IMAGE_REF:-}" ]]; then
     return
   fi
 
@@ -86,9 +86,9 @@ resolve_image_ref
 
 aws eks update-kubeconfig --region "${AWS_REGION}" --name "${EKS_CLUSTER_NAME}"
 
-if [[ -n "${K8S_DATABASE_ENV_FILE}" ]]; then
-  db_env_file="$(mktemp)"
-  printf '%s' "${K8S_DATABASE_ENV_FILE}" > "${db_env_file}"
+  if [[ -n "${K8S_DATABASE_ENV_FILE:-}" ]]; then
+    db_env_file="$(mktemp)"
+    printf '%s' "${K8S_DATABASE_ENV_FILE:-}" > "${db_env_file}"
 
   kubectl create secret generic oficina-database-env \
     --namespace default \
