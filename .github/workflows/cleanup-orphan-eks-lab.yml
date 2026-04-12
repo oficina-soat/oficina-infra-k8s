@@ -1,0 +1,40 @@
+name: Cleanup Orphan EKS Lab
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_cleanup:
+        description: "Digite CLEANUP para confirmar a remocao do cluster EKS orfao"
+        required: true
+        type: string
+
+concurrency:
+  group: cleanup-orphan-eks-lab
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    if: inputs.confirm_cleanup == 'CLEANUP'
+    runs-on: ubuntu-latest
+    environment:
+      name: lab
+    permissions:
+      contents: read
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+      EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME || 'simple-eks' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - name: Cleanup orphan EKS resources
+        shell: bash
+        run: bash ./scripts/cleanup-orphan-eks.sh
