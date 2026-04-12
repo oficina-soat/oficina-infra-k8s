@@ -14,6 +14,7 @@ TF_STATE_REGION="${TF_STATE_REGION:-${AWS_REGION}}"
 TF_STATE_DYNAMODB_TABLE="${TF_STATE_DYNAMODB_TABLE:-}"
 TERRAFORM_ACTION="${TERRAFORM_ACTION:-apply}"
 BACKEND_S3_TEMPLATE="${TERRAFORM_DIR}/backend.s3.tf.example"
+EFFECTIVE_TF_STATE_BUCKET=""
 backend_override_file=""
 
 cleanup() {
@@ -76,6 +77,15 @@ resolve_shared_bucket_name() {
     "${TF_VAR_cluster_name}" \
     "$(aws_caller_account_id)" \
     "${TF_VAR_region}"
+}
+
+resolve_effective_backend_bucket() {
+  if [[ -n "${TF_STATE_BUCKET:-}" ]]; then
+    printf '%s\n' "${TF_STATE_BUCKET:-}"
+    return
+  fi
+
+  resolve_shared_bucket_name
 }
 
 resolve_role_arn_by_name_fragment() {
@@ -211,7 +221,7 @@ create_backend_override() {
 
 terraform_remote_backend_args() {
   local args=(
-    "-backend-config=bucket=${TF_STATE_BUCKET:-}"
+    "-backend-config=bucket=${EFFECTIVE_TF_STATE_BUCKET}"
     "-backend-config=key=${TF_STATE_KEY}"
     "-backend-config=region=${TF_STATE_REGION}"
     "-backend-config=encrypt=true"
@@ -255,62 +265,88 @@ terraform_state_manages_shared_bucket() {
 }
 
 aws_bucket_exists() {
-  aws s3api head-bucket --bucket "${TF_STATE_BUCKET:-}" >/dev/null 2>&1
+  aws s3api head-bucket --bucket "${EFFECTIVE_TF_STATE_BUCKET}" >/dev/null 2>&1
+}
+
+remote_state_exists() {
+  aws s3api head-object \
+    --bucket "${EFFECTIVE_TF_STATE_BUCKET}" \
+    --key "${TF_STATE_KEY}" >/dev/null 2>&1
+}
+
+eks_cluster_exists() {
+  aws eks describe-cluster --name "${EKS_CLUSTER_NAME}" >/dev/null 2>&1
+}
+
+fail_missing_remote_state_with_existing_resources() {
+  if eks_cluster_exists; then
+    echo "O cluster EKS ${EKS_CLUSTER_NAME} ja existe, mas o state remoto ${EFFECTIVE_TF_STATE_BUCKET}/${TF_STATE_KEY} nao foi encontrado. O runner perdeu o state local de execucoes anteriores. Configure TF_STATE_BUCKET para reaproveitar um state existente ou remova/importe os recursos antes de novo apply." >&2
+    exit 1
+  fi
 }
 
 run_apply() {
-  if [[ -n "${TF_STATE_BUCKET:-}" ]]; then
-    create_backend_override
-    export TF_VAR_terraform_shared_data_bucket_name="${TF_STATE_BUCKET:-}"
+  EFFECTIVE_TF_STATE_BUCKET="$(resolve_effective_backend_bucket)"
 
-    if aws_bucket_exists; then
-      log "Bucket ${TF_STATE_BUCKET:-} ja existe; configurando backend remoto."
+  if aws_bucket_exists; then
+    create_backend_override
+    export TF_VAR_terraform_shared_data_bucket_name="${EFFECTIVE_TF_STATE_BUCKET}"
+
+    if remote_state_exists; then
+      log "Bucket ${EFFECTIVE_TF_STATE_BUCKET} e state remoto encontrados; configurando backend remoto."
       terraform_init_remote
 
       if terraform_state_manages_shared_bucket; then
-        log "Bucket ${TF_STATE_BUCKET:-} ja esta no state deste ambiente; mantendo gerenciamento pelo Terraform."
+        log "Bucket ${EFFECTIVE_TF_STATE_BUCKET} ja esta no state deste ambiente; mantendo gerenciamento pelo Terraform."
         export TF_VAR_create_terraform_shared_data_bucket="true"
       else
-        log "Bucket ${TF_STATE_BUCKET:-} existe fora do state deste ambiente; reutilizando sem tentar recriar."
+        log "Bucket ${EFFECTIVE_TF_STATE_BUCKET} existe fora do state deste ambiente; reutilizando sem tentar recriar."
         export TF_VAR_create_terraform_shared_data_bucket="false"
       fi
     else
-      log "Bucket ${TF_STATE_BUCKET:-} ainda nao existe; executando bootstrap local para criar o bucket."
-      export TF_VAR_create_terraform_shared_data_bucket="true"
-      export TF_VAR_terraform_shared_data_bucket_name="${TF_STATE_BUCKET:-}"
+      fail_missing_remote_state_with_existing_resources
+
+      log "Bucket ${EFFECTIVE_TF_STATE_BUCKET} existe, mas o state remoto ainda nao foi criado. Executando bootstrap local e migrando o state ao final."
+      export TF_VAR_create_terraform_shared_data_bucket="false"
       terraform_init_local
+      set_shared_bucket_mode
       set_ecr_repository_mode
       terraform -chdir="${TERRAFORM_DIR}" apply -input=false -auto-approve
 
-      log "Migrando o state local para o backend S3 em ${TF_STATE_BUCKET:-}."
+      log "Migrando o state local para o backend S3 em ${EFFECTIVE_TF_STATE_BUCKET}."
       terraform_migrate_state_remote
     fi
   else
-    log "TF_STATE_BUCKET ausente; usando backend local em ${TERRAFORM_DIR}/terraform.tfstate."
+    log "Bucket de backend ${EFFECTIVE_TF_STATE_BUCKET} ainda nao existe; executando bootstrap local para criar o bucket compartilhado."
     terraform_init_local
     set_shared_bucket_mode
+    set_ecr_repository_mode
+    terraform -chdir="${TERRAFORM_DIR}" apply -input=false -auto-approve
+
+    log "Migrando o state local para o backend S3 em ${EFFECTIVE_TF_STATE_BUCKET}."
+    create_backend_override
+    terraform_migrate_state_remote
   fi
 
-  if [[ -n "${TF_STATE_BUCKET:-}" ]]; then
-    export TF_VAR_terraform_shared_data_bucket_name="${TF_STATE_BUCKET:-}"
-  else
-    set_shared_bucket_mode
-  fi
+  export TF_VAR_terraform_shared_data_bucket_name="${EFFECTIVE_TF_STATE_BUCKET}"
+  set_shared_bucket_mode
   set_ecr_repository_mode
   terraform -chdir="${TERRAFORM_DIR}" apply -input=false -auto-approve
 }
 
 run_destroy() {
-  if [[ -n "${TF_STATE_BUCKET:-}" ]]; then
-    create_backend_override
-    export TF_VAR_terraform_shared_data_bucket_name="${TF_STATE_BUCKET:-}"
+  EFFECTIVE_TF_STATE_BUCKET="$(resolve_effective_backend_bucket)"
 
-    if ! aws_bucket_exists; then
-      echo "TF_STATE_BUCKET foi informado, mas o bucket ${TF_STATE_BUCKET:-} nao existe. Sem esse backend remoto, o workflow nao consegue recuperar o state para destruir a infraestrutura." >&2
+  if aws_bucket_exists; then
+    create_backend_override
+    export TF_VAR_terraform_shared_data_bucket_name="${EFFECTIVE_TF_STATE_BUCKET}"
+
+    if ! remote_state_exists; then
+      echo "O bucket de backend ${EFFECTIVE_TF_STATE_BUCKET} existe, mas o state remoto ${TF_STATE_KEY} nao foi encontrado. Sem esse state, o workflow nao consegue destruir a infraestrutura com seguranca." >&2
       exit 1
     fi
 
-    log "Bucket ${TF_STATE_BUCKET:-} existe; carregando state do backend remoto."
+    log "Bucket ${EFFECTIVE_TF_STATE_BUCKET} existe; carregando state do backend remoto."
     terraform_init_remote
 
     if terraform_state_manages_shared_bucket; then
@@ -322,16 +358,12 @@ run_destroy() {
       export TF_VAR_create_terraform_shared_data_bucket="false"
     fi
   else
-    log "TF_STATE_BUCKET ausente; usando backend local em ${TERRAFORM_DIR}/terraform.tfstate para destroy."
-    terraform_init_local
-    set_shared_bucket_mode
+    echo "O bucket de backend ${EFFECTIVE_TF_STATE_BUCKET} nao existe. Sem state remoto persistente, o workflow nao consegue destruir a infraestrutura criada em execucoes anteriores do GitHub Actions." >&2
+    exit 1
   fi
 
-  if [[ -n "${TF_STATE_BUCKET:-}" ]]; then
-    export TF_VAR_terraform_shared_data_bucket_name="${TF_STATE_BUCKET:-}"
-  else
-    set_shared_bucket_mode
-  fi
+  export TF_VAR_terraform_shared_data_bucket_name="${EFFECTIVE_TF_STATE_BUCKET}"
+  set_shared_bucket_mode
   set_ecr_repository_mode
   terraform -chdir="${TERRAFORM_DIR}" destroy -input=false -auto-approve
 }
