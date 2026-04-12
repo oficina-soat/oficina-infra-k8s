@@ -17,17 +17,11 @@ TF_STATE_DYNAMODB_TABLE="${TF_STATE_DYNAMODB_TABLE:-}"
 K8S_DATABASE_ENV_FILE="${K8S_DATABASE_ENV_FILE:-}"
 DEPLOY_KEYCLOAK="${DEPLOY_KEYCLOAK:-false}"
 REGENERATE_JWT="${REGENERATE_JWT:-true}"
-BACKEND_S3_TEMPLATE="${TERRAFORM_DIR}/backend.s3.tf.example"
-backend_override_file=""
 db_env_file=""
 
 cleanup() {
   if [[ -n "${db_env_file}" && -f "${db_env_file}" ]]; then
     rm -f "${db_env_file}"
-  fi
-
-  if [[ -n "${backend_override_file}" && -f "${backend_override_file}" ]]; then
-    rm -f "${backend_override_file}"
   fi
 }
 
@@ -58,12 +52,6 @@ unset_if_empty() {
 normalize_optional_envs() {
   unset_if_empty "IMAGE_REF"
   unset_if_empty "K8S_DATABASE_ENV_FILE"
-  unset_if_empty "TF_STATE_BUCKET"
-  unset_if_empty "TF_STATE_DYNAMODB_TABLE"
-  unset_if_empty "TF_VAR_azs"
-  unset_if_empty "TF_VAR_public_subnet_cidrs"
-  unset_if_empty "TF_VAR_cluster_endpoint_public_access_cidrs"
-  unset_if_empty "TF_VAR_terraform_shared_data_bucket_name"
 }
 
 resolve_image_ref() {
@@ -86,90 +74,13 @@ resolve_image_ref() {
   log "IMAGE_REF resolvido automaticamente para ${IMAGE_REF}."
 }
 
-create_backend_override() {
-  if [[ ! -f "${BACKEND_S3_TEMPLATE}" ]]; then
-    echo "Template de backend S3 nao encontrado: ${BACKEND_S3_TEMPLATE}" >&2
-    exit 1
-  fi
-
-  backend_override_file="$(mktemp "${TERRAFORM_DIR}/backend-ci-XXXXXX.tf")"
-  cp "${BACKEND_S3_TEMPLATE}" "${backend_override_file}"
-}
-
-terraform_init_remote() {
-  local backend_args=(
-    "-backend-config=bucket=${TF_STATE_BUCKET}"
-    "-backend-config=key=${TF_STATE_KEY}"
-    "-backend-config=region=${TF_STATE_REGION}"
-    "-backend-config=encrypt=true"
-  )
-
-  if [[ -n "${TF_STATE_DYNAMODB_TABLE}" ]]; then
-    backend_args+=("-backend-config=dynamodb_table=${TF_STATE_DYNAMODB_TABLE}")
-  fi
-
-  terraform -chdir="${TERRAFORM_DIR}" init -input=false -reconfigure "${backend_args[@]}"
-}
-
-terraform_migrate_state_remote() {
-  local backend_args=(
-    "-backend-config=bucket=${TF_STATE_BUCKET}"
-    "-backend-config=key=${TF_STATE_KEY}"
-    "-backend-config=region=${TF_STATE_REGION}"
-    "-backend-config=encrypt=true"
-  )
-
-  if [[ -n "${TF_STATE_DYNAMODB_TABLE}" ]]; then
-    backend_args+=("-backend-config=dynamodb_table=${TF_STATE_DYNAMODB_TABLE}")
-  fi
-
-  terraform -chdir="${TERRAFORM_DIR}" init -input=false -migrate-state -reconfigure "${backend_args[@]}"
-}
-
-terraform_state_manages_shared_bucket() {
-  terraform -chdir="${TERRAFORM_DIR}" state list 2>/dev/null | grep -q '^module\.terraform_shared_data_bucket\[0\]\.aws_s3_bucket\.this$'
-}
-
-aws_bucket_exists() {
-  aws s3api head-bucket --bucket "${TF_STATE_BUCKET}" >/dev/null 2>&1
-}
-
 normalize_optional_envs
 
 require_non_empty "${AWS_REGION}" "AWS_REGION"
 require_non_empty "${EKS_CLUSTER_NAME}" "EKS_CLUSTER_NAME"
 require_non_empty "${TF_VAR_kubernetes_version:-}" "TF_VAR_kubernetes_version"
 
-if [[ -n "${TF_STATE_BUCKET}" ]]; then
-  create_backend_override
-  export TF_VAR_terraform_shared_data_bucket_name="${TF_STATE_BUCKET}"
-
-  if aws_bucket_exists; then
-    log "Bucket ${TF_STATE_BUCKET} ja existe; configurando backend remoto."
-    terraform_init_remote
-
-    if terraform_state_manages_shared_bucket; then
-      log "Bucket ${TF_STATE_BUCKET} ja esta no state deste ambiente; mantendo gerenciamento pelo Terraform."
-      export TF_VAR_create_terraform_shared_data_bucket="true"
-    else
-      log "Bucket ${TF_STATE_BUCKET} existe fora do state deste ambiente; reutilizando sem tentar recriar."
-      export TF_VAR_create_terraform_shared_data_bucket="false"
-    fi
-  else
-    log "Bucket ${TF_STATE_BUCKET} ainda nao existe; executando bootstrap local para criar o bucket."
-    export TF_VAR_create_terraform_shared_data_bucket="true"
-    terraform -chdir="${TERRAFORM_DIR}" init -input=false -reconfigure
-    terraform -chdir="${TERRAFORM_DIR}" apply -input=false -auto-approve
-
-    log "Migrando o state local para o backend S3 em ${TF_STATE_BUCKET}."
-    terraform_migrate_state_remote
-  fi
-else
-  echo "TF_STATE_BUCKET ausente; usando backend local em ${TERRAFORM_DIR}/terraform.tfstate."
-  terraform -chdir="${TERRAFORM_DIR}" init -input=false -reconfigure
-fi
-
-terraform -chdir="${TERRAFORM_DIR}" apply -input=false -auto-approve
+TERRAFORM_ACTION=apply bash "${REPO_ROOT}/scripts/ci-terraform.sh"
 
 resolve_image_ref
 

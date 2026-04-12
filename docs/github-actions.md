@@ -2,6 +2,11 @@
 
 O deploy automatizado usa o workflow [deploy-lab.yml](/home/vandrep/projetos/oficina-soat/oficina-infra-k8s/.github/workflows/deploy-lab.yml).
 
+Para operacoes de infraestrutura sem deploy da aplicacao, use tambem:
+
+- [terraform-apply-lab.yml](/home/vandrep/projetos/oficina-soat/oficina-infra-k8s/.github/workflows/terraform-apply-lab.yml)
+- [terraform-destroy-lab.yml](/home/vandrep/projetos/oficina-soat/oficina-infra-k8s/.github/workflows/terraform-destroy-lab.yml)
+
 ## Gatilho
 
 - `push` em branch protegida
@@ -72,3 +77,5 @@ Se o bucket ainda nao existir, o script faz bootstrap com state local, cria o bu
 Se o bucket ja existir, o script o reutiliza normalmente. Quando o bucket ja faz parte do state desse ambiente, ele continua sendo gerenciado pelo Terraform; quando for um bucket externo preexistente, o workflow apenas o usa como backend sem tentar recria-lo.
 
 Se `TF_STATE_BUCKET` nao for informado, o workflow usa state local no runner do GitHub Actions. Isso serve apenas para bootstrap inicial, mas nao e adequado para automacao recorrente, porque o state nao persiste entre execucoes.
+
+No workflow manual de `destroy`, se o bucket S3 de backend fizer parte do state desse ambiente, o script migra o state para backend local antes de destruir a infraestrutura. Isso evita o bloqueio classico de tentar apagar o proprio bucket usado pelo backend remoto.
