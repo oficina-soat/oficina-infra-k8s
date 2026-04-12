@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: oficina-app-config
+  labels:
+    app.kubernetes.io/name: oficina-app
+    app.kubernetes.io/part-of: oficina
+data:
+  JAVA_TOOL_OPTIONS: -Dquarkus.hibernate-orm.schema-management.strategy=update
+  MP_JWT_VERIFY_PUBLICKEY_LOCATION: file:/jwt/publicKey.pem
+  SMALLRYE_JWT_SIGN_KEY_LOCATION: file:/jwt/privateKey.pem
+  QUARKUS_MAILER_HOST: mailhog
+  QUARKUS_MAILER_PORT: "1025"
+  QUARKUS_MAILER_TLS: "false"
+  QUARKUS_MAILER_START_TLS: DISABLED
+  QUARKUS_MAILER_MOCK: "false"
+  QUARKUS_MAILER_FROM: noreply@oficina.local

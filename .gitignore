@@ -1,0 +1,28 @@
+.tmp/
+
+# IDE/editor settings
+.idea/
+.vscode/
+
+# Terraform/Terragrunt local state
+.terraform/
+.terragrunt-cache/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.auto.tfvars
+terraform/environments/lab/backend.s3.tf
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Local environment and temporary files
+.env
+.env.*
+*.log
+.DS_Store
+*.swp
+*.swo
+*~

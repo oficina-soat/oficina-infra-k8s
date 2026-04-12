@@ -1,0 +1,94 @@
+name: Deploy Lab
+
+on:
+  push:
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-lab-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || github.ref_protected
+    runs-on: ubuntu-latest
+    environment:
+      name: lab
+    permissions:
+      contents: read
+    env:
+      TF_IN_AUTOMATION: "true"
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+      EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME || 'simple-eks' }}
+      IMAGE_REF: ${{ vars.IMAGE_REF }}
+      DEPLOY_KEYCLOAK: ${{ vars.DEPLOY_KEYCLOAK || 'true' }}
+      REGENERATE_JWT: ${{ vars.REGENERATE_JWT || 'true' }}
+      TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+      TF_STATE_KEY: ${{ vars.TF_STATE_KEY || 'oficina/lab/terraform.tfstate' }}
+      TF_STATE_REGION: ${{ vars.TF_STATE_REGION || vars.AWS_REGION || 'us-east-1' }}
+      TF_STATE_DYNAMODB_TABLE: ${{ vars.TF_STATE_DYNAMODB_TABLE }}
+      K8S_DATABASE_ENV_FILE: ${{ secrets.K8S_DATABASE_ENV_FILE }}
+      TF_VAR_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+      TF_VAR_cluster_name: ${{ vars.EKS_CLUSTER_NAME || 'simple-eks' }}
+      TF_VAR_kubernetes_version: ${{ vars.KUBERNETES_VERSION }}
+      TF_VAR_eks_cluster_role_arn: ${{ vars.EKS_CLUSTER_ROLE_ARN || 'arn:aws:iam::998977374439:role/c198241a5073944l13625353t1w998977-LabEksClusterRole-V9LlUb7iwKB6' }}
+      TF_VAR_eks_node_role_arn: ${{ vars.EKS_NODE_ROLE_ARN || 'arn:aws:iam::998977374439:role/c198241a5073944l13625353t1w998977374-LabEksNodeRole-7Kxx7p05maFv' }}
+      TF_VAR_eks_access_principal_arn: ${{ vars.EKS_ACCESS_PRINCIPAL_ARN || 'arn:aws:iam::998977374439:role/voclabs' }}
+      TF_VAR_instance_type: ${{ vars.EKS_INSTANCE_TYPE || 't3.medium' }}
+      TF_VAR_node_capacity_type: ${{ vars.EKS_NODE_CAPACITY_TYPE || 'ON_DEMAND' }}
+      TF_VAR_node_ami_type: ${{ vars.EKS_NODE_AMI_TYPE || 'AL2023_x86_64_STANDARD' }}
+      TF_VAR_desired_size: ${{ vars.EKS_DESIRED_SIZE || '1' }}
+      TF_VAR_min_size: ${{ vars.EKS_MIN_SIZE || '1' }}
+      TF_VAR_max_size: ${{ vars.EKS_MAX_SIZE || '1' }}
+      TF_VAR_azs: ${{ vars.EKS_AZS }}
+      TF_VAR_public_subnet_cidrs: ${{ vars.EKS_PUBLIC_SUBNET_CIDRS }}
+      TF_VAR_cluster_endpoint_public_access_cidrs: ${{ vars.EKS_CLUSTER_ENDPOINT_PUBLIC_ACCESS_CIDRS }}
+      TF_VAR_ecr_repository_name: ${{ vars.ECR_REPOSITORY_NAME || 'oficina' }}
+      TF_VAR_create_ecr_repository: ${{ vars.CREATE_ECR_REPOSITORY || 'false' }}
+      TF_VAR_create_terraform_shared_data_bucket: ${{ vars.CREATE_TERRAFORM_SHARED_DATA_BUCKET || 'true' }}
+      TF_VAR_terraform_shared_data_bucket_name: ${{ vars.TERRAFORM_SHARED_DATA_BUCKET_NAME || vars.TF_STATE_BUCKET }}
+      TF_VAR_terraform_shared_data_bucket_force_destroy: ${{ vars.TERRAFORM_SHARED_DATA_BUCKET_FORCE_DESTROY || 'false' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: latest
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - name: Validate workflow configuration
+        shell: bash
+        run: |
+          required_vars=(
+            AWS_REGION
+            EKS_CLUSTER_NAME
+            IMAGE_REF
+            TF_VAR_kubernetes_version
+          )
+
+          for name in "${required_vars[@]}"; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "Configuracao obrigatoria ausente em vars/secrets do GitHub (organization, repository ou environment): ${name}" >&2
+              exit 1
+            fi
+          done
+
+          if [[ -z "${TF_STATE_BUCKET:-}" ]]; then
+            echo "Aviso: TF_STATE_BUCKET ausente; o workflow usara state local temporario neste runner." >&2
+          fi
+
+      - name: Deploy infrastructure and application
+        shell: bash
+        run: bash ./scripts/ci-deploy.sh
