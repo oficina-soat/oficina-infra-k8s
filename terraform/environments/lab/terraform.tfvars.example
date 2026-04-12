@@ -1,0 +1,26 @@
+region       = "us-east-1"
+cluster_name = "simple-eks"
+
+# Informe uma versao suportada pelo seu laboratorio/EKS.
+kubernetes_version = "1.35"
+
+# Roles IAM preexistentes para o EKS no laboratorio.
+eks_cluster_role_arn = "arn:aws:iam::415459106622:role/c207442a5275926l14475550t1w415459-LabEksClusterRole-ZJrT0UsVDXGR"
+eks_node_role_arn    = "arn:aws:iam::415459106622:role/c207442a5275926l14475550t1w415459106-LabEksNodeRole-o7WajVdYdjUf"
+
+# Opcional. Se omitido ou removido, o root module usa o default do laboratorio.
+eks_access_principal_arn = "arn:aws:iam::415459106622:role/voclabs"
+
+instance_type = "t3.medium"
+desired_size  = 1
+min_size      = 1
+max_size      = 2
+
+cluster_endpoint_public_access_cidrs = ["0.0.0.0/0"]
+
+# Crie o repositorio no primeiro apply caso ele ainda nao exista.
+create_ecr_repository = true
+
+# O bucket S3 de dados compartilhados e criado por default.
+# Se quiser um nome fixo, descomente a linha abaixo.
+# terraform_shared_data_bucket_name = "tf-shared-simple-eks-<account-id>-us-east-1"
