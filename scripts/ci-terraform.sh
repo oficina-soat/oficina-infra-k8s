@@ -303,6 +303,14 @@ orphan_network_exists() {
   [[ -n "${vpc_ids}" && "${vpc_ids}" != "None" ]]
 }
 
+orphan_network_ids() {
+  aws ec2 describe-vpcs \
+    --region "${AWS_REGION}" \
+    --filters "Name=tag:Name,Values=${EKS_CLUSTER_NAME}-vpc" \
+    --query 'Vpcs[].VpcId' \
+    --output text 2>/dev/null || true
+}
+
 fail_missing_remote_state_with_existing_resources() {
   if eks_cluster_exists; then
     echo "O cluster EKS ${EKS_CLUSTER_NAME} ja existe, mas o state remoto ${EFFECTIVE_TF_STATE_BUCKET}/${TF_STATE_KEY} nao foi encontrado. O runner perdeu o state local de execucoes anteriores. Para recuperar com seguranca, execute o workflow manual 'Cleanup Orphan Lab Infra', depois rode 'Terraform Apply Lab' para recriar a infraestrutura com state remoto persistido, e so entao volte ao workflow de deploy." >&2
@@ -310,7 +318,7 @@ fail_missing_remote_state_with_existing_resources() {
   fi
 
   if orphan_network_exists; then
-    echo "A rede do laboratorio ${EKS_CLUSTER_NAME} ainda existe na AWS, mas o state remoto ${EFFECTIVE_TF_STATE_BUCKET}/${TF_STATE_KEY} nao foi encontrado. Para evitar duplicacao de VPC/subnets e outros recursos orfaos, execute o workflow manual 'Cleanup Orphan Lab Infra', depois rode 'Terraform Apply Lab' para recriar a infraestrutura com state remoto persistido." >&2
+    echo "A rede do laboratorio ${EKS_CLUSTER_NAME} ainda existe na AWS (VPCs: $(orphan_network_ids)), mas o state remoto ${EFFECTIVE_TF_STATE_BUCKET}/${TF_STATE_KEY} nao foi encontrado. Para evitar duplicacao de VPC/subnets e outros recursos orfaos, execute o workflow manual 'Cleanup Orphan Lab Infra', depois rode 'Terraform Apply Lab' para recriar a infraestrutura com state remoto persistido." >&2
     exit 1
   fi
 }

@@ -6,6 +6,8 @@ AWS_REGION="${AWS_REGION:-}"
 EKS_CLUSTER_NAME="${EKS_CLUSTER_NAME:-}"
 NODE_GROUP_NAME="${NODE_GROUP_NAME:-${EKS_CLUSTER_NAME}-ng}"
 NETWORK_INTERFACE_WAIT_SECONDS="${NETWORK_INTERFACE_WAIT_SECONDS:-600}"
+VPC_CLEANUP_WAIT_SECONDS="${VPC_CLEANUP_WAIT_SECONDS:-900}"
+VPC_CLEANUP_POLL_SECONDS="${VPC_CLEANUP_POLL_SECONDS:-15}"
 
 log() {
   printf '\n[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
@@ -49,6 +51,64 @@ list_cluster_vpcs() {
     --output text
 }
 
+vpc_exists() {
+  local vpc_id="$1"
+
+  aws ec2 describe-vpcs \
+    --region "${AWS_REGION}" \
+    --vpc-ids "${vpc_id}" >/dev/null 2>&1
+}
+
+list_vpc_subnets() {
+  local vpc_id="$1"
+
+  aws ec2 describe-subnets \
+    --region "${AWS_REGION}" \
+    --filters "Name=vpc-id,Values=${vpc_id}" \
+    --query 'Subnets[].SubnetId' \
+    --output text
+}
+
+list_vpc_route_table_associations() {
+  local vpc_id="$1"
+
+  aws ec2 describe-route-tables \
+    --region "${AWS_REGION}" \
+    --filters "Name=vpc-id,Values=${vpc_id}" \
+    --query 'RouteTables[].Associations[?Main!=`true`].RouteTableAssociationId' \
+    --output text
+}
+
+list_vpc_route_tables() {
+  local vpc_id="$1"
+
+  aws ec2 describe-route-tables \
+    --region "${AWS_REGION}" \
+    --filters "Name=vpc-id,Values=${vpc_id}" \
+    --query 'RouteTables[?length(Associations[?Main==`true`])==`0`].RouteTableId' \
+    --output text
+}
+
+list_vpc_internet_gateways() {
+  local vpc_id="$1"
+
+  aws ec2 describe-internet-gateways \
+    --region "${AWS_REGION}" \
+    --filters "Name=attachment.vpc-id,Values=${vpc_id}" \
+    --query 'InternetGateways[].InternetGatewayId' \
+    --output text
+}
+
+list_vpc_security_groups() {
+  local vpc_id="$1"
+
+  aws ec2 describe-security-groups \
+    --region "${AWS_REGION}" \
+    --filters "Name=vpc-id,Values=${vpc_id}" \
+    --query "SecurityGroups[?GroupName!='default'].GroupId" \
+    --output text
+}
+
 list_vpc_network_interfaces() {
   local vpc_id="$1"
 
@@ -57,6 +117,23 @@ list_vpc_network_interfaces() {
     --filters "Name=vpc-id,Values=${vpc_id}" \
     --query 'NetworkInterfaces[].NetworkInterfaceId' \
     --output text
+}
+
+has_ids() {
+  local ids="${1:-}"
+  [[ -n "${ids}" && "${ids}" != "None" ]]
+}
+
+log_vpc_inventory() {
+  local vpc_id="$1"
+
+  log "Estado atual da VPC ${vpc_id}"
+  printf 'subnets=%s\n' "$(list_vpc_subnets "${vpc_id}")"
+  printf 'route_table_associations=%s\n' "$(list_vpc_route_table_associations "${vpc_id}")"
+  printf 'route_tables=%s\n' "$(list_vpc_route_tables "${vpc_id}")"
+  printf 'internet_gateways=%s\n' "$(list_vpc_internet_gateways "${vpc_id}")"
+  printf 'security_groups=%s\n' "$(list_vpc_security_groups "${vpc_id}")"
+  printf 'network_interfaces=%s\n' "$(list_vpc_network_interfaces "${vpc_id}")"
 }
 
 wait_for_vpc_network_release() {
@@ -73,7 +150,7 @@ wait_for_vpc_network_release() {
 
     if (( SECONDS >= deadline )); then
       echo "A VPC ${vpc_id} ainda possui interfaces de rede apos ${NETWORK_INTERFACE_WAIT_SECONDS}s: ${interface_ids}" >&2
-      exit 1
+      return 1
     fi
 
     log "Aguardando liberacao das interfaces de rede da VPC ${vpc_id}: ${interface_ids}"
@@ -84,21 +161,20 @@ wait_for_vpc_network_release() {
 delete_vpc_subnets() {
   local vpc_id="$1"
   local subnet_ids=""
-  subnet_ids="$(aws ec2 describe-subnets \
-    --region "${AWS_REGION}" \
-    --filters "Name=vpc-id,Values=${vpc_id}" \
-    --query 'Subnets[].SubnetId' \
-    --output text)"
+  local output=""
+  subnet_ids="$(list_vpc_subnets "${vpc_id}")"
 
-  if [[ -z "${subnet_ids}" || "${subnet_ids}" == "None" ]]; then
+  if ! has_ids "${subnet_ids}"; then
     return
   fi
 
   for subnet_id in ${subnet_ids}; do
     log "Removendo subnet ${subnet_id} da VPC ${vpc_id}"
-    aws ec2 delete-subnet \
+    if ! output="$(aws ec2 delete-subnet \
       --region "${AWS_REGION}" \
-      --subnet-id "${subnet_id}" >/dev/null
+      --subnet-id "${subnet_id}" 2>&1)"; then
+      log "Ainda nao foi possivel remover subnet ${subnet_id}: ${output}"
+    fi
   done
 }
 
@@ -106,34 +182,31 @@ delete_vpc_route_tables() {
   local vpc_id="$1"
   local association_ids=""
   local route_table_ids=""
+  local output=""
 
-  association_ids="$(aws ec2 describe-route-tables \
-    --region "${AWS_REGION}" \
-    --filters "Name=vpc-id,Values=${vpc_id}" \
-    --query 'RouteTables[].Associations[?Main!=`true`].RouteTableAssociationId' \
-    --output text)"
+  association_ids="$(list_vpc_route_table_associations "${vpc_id}")"
 
   for association_id in ${association_ids}; do
     if [[ -n "${association_id}" && "${association_id}" != "None" ]]; then
       log "Desassociando route table association ${association_id} da VPC ${vpc_id}"
-      aws ec2 disassociate-route-table \
+      if ! output="$(aws ec2 disassociate-route-table \
         --region "${AWS_REGION}" \
-        --association-id "${association_id}" >/dev/null
+        --association-id "${association_id}" 2>&1)"; then
+        log "Ainda nao foi possivel desassociar route table association ${association_id}: ${output}"
+      fi
     fi
   done
 
-  route_table_ids="$(aws ec2 describe-route-tables \
-    --region "${AWS_REGION}" \
-    --filters "Name=vpc-id,Values=${vpc_id}" \
-    --query 'RouteTables[?length(Associations[?Main==`true`])==`0`].RouteTableId' \
-    --output text)"
+  route_table_ids="$(list_vpc_route_tables "${vpc_id}")"
 
   for route_table_id in ${route_table_ids}; do
     if [[ -n "${route_table_id}" && "${route_table_id}" != "None" ]]; then
       log "Removendo route table ${route_table_id} da VPC ${vpc_id}"
-      aws ec2 delete-route-table \
+      if ! output="$(aws ec2 delete-route-table \
         --region "${AWS_REGION}" \
-        --route-table-id "${route_table_id}" >/dev/null
+        --route-table-id "${route_table_id}" 2>&1)"; then
+        log "Ainda nao foi possivel remover route table ${route_table_id}: ${output}"
+      fi
     fi
   done
 }
@@ -141,24 +214,25 @@ delete_vpc_route_tables() {
 delete_vpc_internet_gateways() {
   local vpc_id="$1"
   local igw_ids=""
-  igw_ids="$(aws ec2 describe-internet-gateways \
-    --region "${AWS_REGION}" \
-    --filters "Name=attachment.vpc-id,Values=${vpc_id}" \
-    --query 'InternetGateways[].InternetGatewayId' \
-    --output text)"
+  local output=""
+  igw_ids="$(list_vpc_internet_gateways "${vpc_id}")"
 
   for igw_id in ${igw_ids}; do
     if [[ -n "${igw_id}" && "${igw_id}" != "None" ]]; then
       log "Desanexando internet gateway ${igw_id} da VPC ${vpc_id}"
-      aws ec2 detach-internet-gateway \
+      if ! output="$(aws ec2 detach-internet-gateway \
         --region "${AWS_REGION}" \
         --internet-gateway-id "${igw_id}" \
-        --vpc-id "${vpc_id}" >/dev/null
+        --vpc-id "${vpc_id}" 2>&1)"; then
+        log "Ainda nao foi possivel desanexar internet gateway ${igw_id}: ${output}"
+      fi
 
       log "Removendo internet gateway ${igw_id}"
-      aws ec2 delete-internet-gateway \
+      if ! output="$(aws ec2 delete-internet-gateway \
         --region "${AWS_REGION}" \
-        --internet-gateway-id "${igw_id}" >/dev/null
+        --internet-gateway-id "${igw_id}" 2>&1)"; then
+        log "Ainda nao foi possivel remover internet gateway ${igw_id}: ${output}"
+      fi
     fi
   done
 }
@@ -166,36 +240,56 @@ delete_vpc_internet_gateways() {
 delete_vpc_security_groups() {
   local vpc_id="$1"
   local security_group_ids=""
-  security_group_ids="$(aws ec2 describe-security-groups \
-    --region "${AWS_REGION}" \
-    --filters "Name=vpc-id,Values=${vpc_id}" \
-    --query "SecurityGroups[?GroupName!='default'].GroupId" \
-    --output text)"
+  local output=""
+  security_group_ids="$(list_vpc_security_groups "${vpc_id}")"
 
   for security_group_id in ${security_group_ids}; do
     if [[ -n "${security_group_id}" && "${security_group_id}" != "None" ]]; then
       log "Removendo security group ${security_group_id} da VPC ${vpc_id}"
-      aws ec2 delete-security-group \
+      if ! output="$(aws ec2 delete-security-group \
         --region "${AWS_REGION}" \
-        --group-id "${security_group_id}" >/dev/null
+        --group-id "${security_group_id}" 2>&1)"; then
+        log "Ainda nao foi possivel remover security group ${security_group_id}: ${output}"
+      fi
     fi
   done
 }
 
 delete_cluster_vpc() {
   local vpc_id="$1"
+  local deadline=$((SECONDS + VPC_CLEANUP_WAIT_SECONDS))
+  local output=""
 
   log "Limpando recursos orfaos da VPC ${vpc_id}"
-  wait_for_vpc_network_release "${vpc_id}"
-  delete_vpc_subnets "${vpc_id}"
-  delete_vpc_route_tables "${vpc_id}"
-  delete_vpc_internet_gateways "${vpc_id}"
-  delete_vpc_security_groups "${vpc_id}"
 
-  log "Removendo VPC ${vpc_id}"
-  aws ec2 delete-vpc \
-    --region "${AWS_REGION}" \
-    --vpc-id "${vpc_id}" >/dev/null
+  while vpc_exists "${vpc_id}"; do
+    if ! wait_for_vpc_network_release "${vpc_id}"; then
+      log "Interfaces de rede ainda existem na VPC ${vpc_id}; tentando limpar as demais dependencias antes de nova tentativa"
+    fi
+    delete_vpc_subnets "${vpc_id}"
+    delete_vpc_route_tables "${vpc_id}"
+    delete_vpc_internet_gateways "${vpc_id}"
+    delete_vpc_security_groups "${vpc_id}"
+
+    log "Removendo VPC ${vpc_id}"
+    output=""
+    if output="$(aws ec2 delete-vpc \
+      --region "${AWS_REGION}" \
+      --vpc-id "${vpc_id}" 2>&1)"; then
+      log "VPC ${vpc_id} removida com sucesso"
+      return
+    fi
+
+    if (( SECONDS >= deadline )); then
+      log_vpc_inventory "${vpc_id}"
+      echo "Nao foi possivel remover a VPC ${vpc_id} apos ${VPC_CLEANUP_WAIT_SECONDS}s: ${output}" >&2
+      exit 1
+    fi
+
+    log "A VPC ${vpc_id} ainda nao pode ser removida: ${output}"
+    log_vpc_inventory "${vpc_id}"
+    sleep "${VPC_CLEANUP_POLL_SECONDS}"
+  done
 }
 
 require_cmd aws
