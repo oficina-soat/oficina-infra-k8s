@@ -9,7 +9,7 @@ on:
         type: string
 
 concurrency:
-  group: terraform-destroy-lab
+  group: lab-infra
   cancel-in-progress: false
 
 jobs:
@@ -77,6 +77,8 @@ jobs:
               exit 1
             fi
           done
+
+          aws sts get-caller-identity >/dev/null
 
       - name: Terraform destroy
         shell: bash

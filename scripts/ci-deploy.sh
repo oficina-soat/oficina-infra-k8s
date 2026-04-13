@@ -31,6 +31,13 @@ log() {
   printf '\n[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
 }
 
+require_cmd() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    echo "Comando obrigatorio nao encontrado: $1" >&2
+    exit 1
+  fi
+}
+
 require_non_empty() {
   local value="$1"
   local name="$2"
@@ -76,6 +83,9 @@ resolve_image_ref() {
 
 normalize_optional_envs
 
+require_cmd aws
+require_cmd kubectl
+require_cmd terraform
 require_non_empty "${AWS_REGION}" "AWS_REGION"
 require_non_empty "${EKS_CLUSTER_NAME}" "EKS_CLUSTER_NAME"
 require_non_empty "${TF_VAR_kubernetes_version:-}" "TF_VAR_kubernetes_version"
