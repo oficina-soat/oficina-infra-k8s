@@ -18,10 +18,15 @@ K8S_DATABASE_ENV_FILE="${K8S_DATABASE_ENV_FILE:-}"
 DEPLOY_KEYCLOAK="${DEPLOY_KEYCLOAK:-false}"
 REGENERATE_JWT="${REGENERATE_JWT:-true}"
 db_env_file=""
+ecr_repository_url_file=""
 
 cleanup() {
   if [[ -n "${db_env_file}" && -f "${db_env_file}" ]]; then
     rm -f "${db_env_file}"
+  fi
+
+  if [[ -n "${ecr_repository_url_file}" && -f "${ecr_repository_url_file}" ]]; then
+    rm -f "${ecr_repository_url_file}"
   fi
 }
 
@@ -69,7 +74,9 @@ resolve_image_ref() {
   require_non_empty "${IMAGE_TAG}" "IMAGE_TAG"
 
   local repository_url=""
-  repository_url="$(terraform -chdir="${TERRAFORM_DIR}" output -raw ecr_repository_url)"
+  require_non_empty "${ecr_repository_url_file}" "ecr_repository_url_file"
+
+  repository_url="$(<"${ecr_repository_url_file}")"
 
   if [[ -z "${repository_url}" ]]; then
     echo "Nao foi possivel obter ecr_repository_url do Terraform para montar IMAGE_REF." >&2
@@ -90,7 +97,13 @@ require_non_empty "${AWS_REGION}" "AWS_REGION"
 require_non_empty "${EKS_CLUSTER_NAME}" "EKS_CLUSTER_NAME"
 require_non_empty "${TF_VAR_kubernetes_version:-}" "TF_VAR_kubernetes_version"
 
-TERRAFORM_ACTION=apply bash "${REPO_ROOT}/scripts/ci-terraform.sh"
+if [[ -z "${IMAGE_REF:-}" ]]; then
+  ecr_repository_url_file="$(mktemp)"
+fi
+
+TERRAFORM_ECR_REPOSITORY_URL_FILE="${ecr_repository_url_file:-}" \
+TERRAFORM_ACTION=apply \
+bash "${REPO_ROOT}/scripts/ci-terraform.sh"
 
 resolve_image_ref
 

@@ -16,6 +16,7 @@ TERRAFORM_ACTION="${TERRAFORM_ACTION:-apply}"
 BACKEND_S3_TEMPLATE="${TERRAFORM_DIR}/backend.s3.tf.example"
 EFFECTIVE_TF_STATE_BUCKET=""
 backend_override_file=""
+TERRAFORM_ECR_REPOSITORY_URL_FILE="${TERRAFORM_ECR_REPOSITORY_URL_FILE:-}"
 
 cleanup() {
   if [[ -n "${backend_override_file}" && -f "${backend_override_file}" ]]; then
@@ -218,6 +219,14 @@ set_shared_bucket_mode() {
   fi
 }
 
+write_ecr_repository_url_file() {
+  if [[ -z "${TERRAFORM_ECR_REPOSITORY_URL_FILE:-}" ]]; then
+    return
+  fi
+
+  terraform -chdir="${TERRAFORM_DIR}" output -raw ecr_repository_url > "${TERRAFORM_ECR_REPOSITORY_URL_FILE}"
+}
+
 create_backend_override() {
   if [[ ! -f "${BACKEND_S3_TEMPLATE}" ]]; then
     echo "Template de backend S3 nao encontrado: ${BACKEND_S3_TEMPLATE}" >&2
@@ -371,6 +380,7 @@ run_apply() {
   set_shared_bucket_mode
   set_ecr_repository_mode
   terraform -chdir="${TERRAFORM_DIR}" apply -input=false -auto-approve
+  write_ecr_repository_url_file
 }
 
 run_destroy() {
