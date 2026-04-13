@@ -117,7 +117,7 @@ Saídas principais:
 
 ## Deploy da aplicação
 
-Antes do deploy da aplicação, o projeto externo do banco precisa criar o secret `oficina-database-env` no namespace `default`.
+Se o projeto externo do banco criar o secret `oficina-database-env` no namespace `default`, o deploy da aplicação o reutiliza automaticamente. Se esse secret não existir, o deploy segue normalmente sem carregar variáveis de banco.
 
 Exemplo:
 
@@ -136,7 +136,7 @@ IMAGE_REF=<registry>/oficina:<tag> \
 
 O script:
 
-- valida a existência do secret `oficina-database-env`
+- reutiliza o secret `oficina-database-env` quando ele existir
 - gera ou reutiliza as chaves JWT
 - aplica o overlay `k8s/overlays/lab`
 - opcionalmente publica o addon `k8s/addons/keycloak`
@@ -200,7 +200,7 @@ Valores opcionais no Environment:
 - `TF_STATE_DYNAMODB_TABLE`
 - `DEPLOY_KEYCLOAK`
 - `REGENERATE_JWT`
-- `K8S_DATABASE_ENV_FILE`: em `secrets`, com o conteúdo completo do `.env` usado para criar ou atualizar o secret `oficina-database-env`
+- `K8S_DATABASE_ENV_FILE`: em `secrets`, com o conteúdo completo do `.env` usado para criar ou atualizar opcionalmente o secret `oficina-database-env`
 
 Se o laboratório recriar as credenciais a cada nova sessão, atualize os `secrets` `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` e, quando houver, `AWS_SESSION_TOKEN` antes do merge que vai disparar o deploy.
 

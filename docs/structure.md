@@ -24,4 +24,4 @@ O repositório segue uma organização inspirada em boas práticas de Terraform:
 - `terraform/environments/lab/`: entrypoint Terraform do laboratório acadêmico
 - `scripts/ci-terraform.sh`: automação de `terraform apply/destroy` usada pelos workflows de infra
 
-O ambiente de laboratório depende do secret externo `oficina-database-env` no namespace `default`.
+O ambiente de laboratório pode reutilizar o secret externo `oficina-database-env` no namespace `default`, mas o deploy não falha quando ele está ausente.
