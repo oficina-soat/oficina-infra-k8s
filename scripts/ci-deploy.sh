@@ -15,6 +15,7 @@ TF_STATE_KEY="${TF_STATE_KEY:-oficina/lab/terraform.tfstate}"
 TF_STATE_REGION="${TF_STATE_REGION:-${AWS_REGION}}"
 TF_STATE_DYNAMODB_TABLE="${TF_STATE_DYNAMODB_TABLE:-}"
 K8S_DATABASE_ENV_FILE="${K8S_DATABASE_ENV_FILE:-}"
+DEPLOY_APP="${DEPLOY_APP:-false}"
 DEPLOY_KEYCLOAK="${DEPLOY_KEYCLOAK:-false}"
 REGENERATE_JWT="${REGENERATE_JWT:-true}"
 db_env_file=""
@@ -62,6 +63,7 @@ unset_if_empty() {
 }
 
 normalize_optional_envs() {
+  unset_if_empty "DEPLOY_APP"
   unset_if_empty "IMAGE_REF"
   unset_if_empty "K8S_DATABASE_ENV_FILE"
 }
@@ -97,7 +99,7 @@ require_non_empty "${AWS_REGION}" "AWS_REGION"
 require_non_empty "${EKS_CLUSTER_NAME}" "EKS_CLUSTER_NAME"
 require_non_empty "${TF_VAR_kubernetes_version:-}" "TF_VAR_kubernetes_version"
 
-if [[ -z "${IMAGE_REF:-}" ]]; then
+if [[ "${DEPLOY_APP}" == "true" && -z "${IMAGE_REF:-}" ]]; then
   ecr_repository_url_file="$(mktemp)"
 fi
 
@@ -105,13 +107,15 @@ TERRAFORM_ECR_REPOSITORY_URL_FILE="${ecr_repository_url_file:-}" \
 TERRAFORM_ACTION=apply \
 bash "${REPO_ROOT}/scripts/ci-terraform.sh"
 
-resolve_image_ref
+if [[ "${DEPLOY_APP}" == "true" ]]; then
+  resolve_image_ref
+fi
 
 aws eks update-kubeconfig --region "${AWS_REGION}" --name "${EKS_CLUSTER_NAME}"
 
-  if [[ -n "${K8S_DATABASE_ENV_FILE:-}" ]]; then
-    db_env_file="$(mktemp)"
-    printf '%s' "${K8S_DATABASE_ENV_FILE:-}" > "${db_env_file}"
+if [[ "${DEPLOY_APP}" == "true" && -n "${K8S_DATABASE_ENV_FILE:-}" ]]; then
+  db_env_file="$(mktemp)"
+  printf '%s' "${K8S_DATABASE_ENV_FILE:-}" > "${db_env_file}"
 
   kubectl create secret generic oficina-database-env \
     --namespace default \
@@ -123,6 +127,7 @@ IMAGE_REF="${IMAGE_REF}" \
 AWS_REGION="${AWS_REGION}" \
 EKS_CLUSTER_NAME="${EKS_CLUSTER_NAME}" \
 UPDATE_KUBECONFIG=false \
+DEPLOY_APP="${DEPLOY_APP}" \
 DEPLOY_KEYCLOAK="${DEPLOY_KEYCLOAK}" \
 REGENERATE_JWT="${REGENERATE_JWT}" \
 bash "${REPO_ROOT}/scripts/deploy-manual.sh"

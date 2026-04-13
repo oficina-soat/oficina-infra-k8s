@@ -20,6 +20,7 @@ jobs:
       TF_IN_AUTOMATION: "true"
       AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
       EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME || 'eks-lab' }}
+      DEPLOY_APP: ${{ vars.DEPLOY_APP || 'false' }}
       IMAGE_REF: ${{ vars.IMAGE_REF }}
       IMAGE_TAG: ${{ vars.IMAGE_TAG || 'latest' }}
       DEPLOY_KEYCLOAK: ${{ vars.DEPLOY_KEYCLOAK || 'true' }}
@@ -90,6 +91,6 @@ jobs:
             echo "Aviso: TF_STATE_BUCKET ausente; o workflow usara o bucket compartilhado derivado do nome do cluster para bootstrap e backend remoto." >&2
           fi
 
-      - name: Deploy infrastructure and application
+      - name: Deploy infrastructure and optional application
         shell: bash
         run: bash ./scripts/ci-deploy.sh

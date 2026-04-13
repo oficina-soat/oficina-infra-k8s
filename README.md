@@ -175,8 +175,9 @@ Se `KUBERNETES_VERSION` nao for informado em `vars`, o workflow usa o default `1
 
 Valores opcionais no Environment:
 
+- `DEPLOY_APP`: controla o deploy da aplicação no cluster. Default do workflow `Deploy Lab`: `false`
 - `IMAGE_REF`: referencia completa da imagem. Se informado, tem prioridade sobre `IMAGE_TAG`
-- `IMAGE_TAG`: tag da imagem. Quando `IMAGE_REF` nao for informado, o workflow monta `${ecr_repository_url}:${IMAGE_TAG}` automaticamente a partir do output do Terraform. Default: `latest`
+- `IMAGE_TAG`: tag da imagem. Quando `DEPLOY_APP=true` e `IMAGE_REF` nao for informado, o workflow monta `${ecr_repository_url}:${IMAGE_TAG}` automaticamente a partir do output do Terraform capturado no mesmo `apply`. Default: `latest`
 - `EKS_ACCESS_PRINCIPAL_ARN`
 - `EKS_CLUSTER_ROLE_ARN`
 - `EKS_NODE_ROLE_ARN`
@@ -211,10 +212,10 @@ Se `TF_STATE_BUCKET` apontar para um bucket que ja existe, o workflow reutiliza 
 O workflow:
 
 - inicializa e aplica o Terraform em `terraform/environments/lab`
-- monta `IMAGE_REF` automaticamente com o output `ecr_repository_url` quando apenas `IMAGE_TAG` for informado
 - atualiza o kubeconfig do cluster EKS
-- opcionalmente cria o secret `oficina-database-env`
-- executa o deploy da aplicação no cluster
+- opcionalmente cria o secret `oficina-database-env` quando `DEPLOY_APP=true`
+- executa o deploy da aplicação no cluster apenas quando `DEPLOY_APP=true`
+- monta `IMAGE_REF` automaticamente com o output `ecr_repository_url` apenas quando `DEPLOY_APP=true` e apenas `IMAGE_TAG` for informado
 
 Sem `TF_STATE_BUCKET`, o workflow usa state local temporário no runner. Isso só serve para execuções efemeras, porque não preserva o state entre execuções.
 
