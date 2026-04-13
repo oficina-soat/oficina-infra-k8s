@@ -39,8 +39,9 @@ Se `KUBERNETES_VERSION` nao for informado em `vars`, o workflow usa o default `1
 
 Variáveis opcionais:
 
+- `DEPLOY_APP`: controla o deploy da aplicação no cluster. Default do workflow `Deploy Lab`: `false`
 - `IMAGE_REF`: referencia completa da imagem. Se informado, tem prioridade sobre `IMAGE_TAG`
-- `IMAGE_TAG`: tag da imagem. Quando `IMAGE_REF` nao for informado, o workflow monta `${ecr_repository_url}:${IMAGE_TAG}` automaticamente a partir do output do Terraform capturado no mesmo `apply`. Default: `latest`
+- `IMAGE_TAG`: tag da imagem. Quando `DEPLOY_APP=true` e `IMAGE_REF` nao for informado, o workflow monta `${ecr_repository_url}:${IMAGE_TAG}` automaticamente a partir do output do Terraform capturado no mesmo `apply`. Default: `latest`
 - `EKS_ACCESS_PRINCIPAL_ARN`
 - `EKS_CLUSTER_ROLE_ARN`
 - `EKS_NODE_ROLE_ARN`
@@ -67,9 +68,9 @@ Variáveis opcionais:
 
 ## Secrets opcionais
 
-- `K8S_DATABASE_ENV_FILE`: conteúdo completo do arquivo `.env` usado para criar ou atualizar opcionalmente o secret `oficina-database-env` no cluster
+- `K8S_DATABASE_ENV_FILE`: conteúdo completo do arquivo `.env` usado para criar ou atualizar opcionalmente o secret `oficina-database-env` no cluster quando `DEPLOY_APP=true`
 
-Se `K8S_DATABASE_ENV_FILE` não for informado, o workflow não cria esse secret. Se ele já existir no cluster, a aplicação o reutiliza; se não existir, o deploy segue sem essas variáveis.
+Se `K8S_DATABASE_ENV_FILE` não for informado, o workflow não cria esse secret. Se `DEPLOY_APP=true` e ele já existir no cluster, a aplicação o reutiliza; se não existir, o deploy segue sem essas variáveis.
 
 ## Estado do Terraform
 
