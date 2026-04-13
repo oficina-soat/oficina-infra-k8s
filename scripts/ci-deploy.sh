@@ -123,7 +123,7 @@ if [[ "${DEPLOY_APP}" == "true" && -n "${K8S_DATABASE_ENV_FILE:-}" ]]; then
     --dry-run=client -o yaml | kubectl apply -f -
 fi
 
-IMAGE_REF="${IMAGE_REF}" \
+IMAGE_REF="${IMAGE_REF:-}" \
 AWS_REGION="${AWS_REGION}" \
 EKS_CLUSTER_NAME="${EKS_CLUSTER_NAME}" \
 UPDATE_KUBECONFIG=false \
