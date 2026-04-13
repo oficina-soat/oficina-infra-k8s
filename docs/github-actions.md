@@ -67,9 +67,9 @@ Variáveis opcionais:
 
 ## Secrets opcionais
 
-- `K8S_DATABASE_ENV_FILE`: conteúdo completo do arquivo `.env` usado para criar ou atualizar o secret `oficina-database-env` no cluster
+- `K8S_DATABASE_ENV_FILE`: conteúdo completo do arquivo `.env` usado para criar ou atualizar opcionalmente o secret `oficina-database-env` no cluster
 
-Se `K8S_DATABASE_ENV_FILE` não for informado, o workflow não cria esse secret e o deploy da aplicação só funciona se ele já existir no cluster.
+Se `K8S_DATABASE_ENV_FILE` não for informado, o workflow não cria esse secret. Se ele já existir no cluster, a aplicação o reutiliza; se não existir, o deploy segue sem essas variáveis.
 
 ## Estado do Terraform
 

@@ -54,14 +54,10 @@ log() {
   printf '\n[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
 }
 
-ensure_secret_exists() {
+secret_exists() {
   local namespace="$1"
   local secret_name="$2"
-  if ! kubectl get secret "${secret_name}" --namespace "${namespace}" >/dev/null 2>&1; then
-    echo "Secret obrigatorio ausente: ${namespace}/${secret_name}" >&2
-    echo "Provisione o secret pelo projeto standalone de banco antes de fazer o deploy da aplicacao." >&2
-    exit 1
-  fi
+  kubectl get secret "${secret_name}" --namespace "${namespace}" >/dev/null 2>&1
 }
 
 escape_sed_replacement() {
@@ -115,7 +111,11 @@ if [[ "${UPDATE_KUBECONFIG}" == "true" ]]; then
 fi
 
 if [[ "${DEPLOY_APP}" == "true" ]]; then
-  ensure_secret_exists "${APP_NAMESPACE}" "${DB_SECRET_NAME}"
+  if secret_exists "${APP_NAMESPACE}" "${DB_SECRET_NAME}"; then
+    log "Usando secret opcional ${APP_NAMESPACE}/${DB_SECRET_NAME}."
+  else
+    log "Secret opcional ${APP_NAMESPACE}/${DB_SECRET_NAME} ausente; seguindo sem variaveis de banco."
+  fi
 
   if [[ "${REGENERATE_JWT}" == "true" ]]; then
     log "Gerando novo par de chaves JWT"
