@@ -29,6 +29,13 @@ log() {
   printf '\n[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
 }
 
+require_cmd() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    echo "Comando obrigatorio nao encontrado: $1" >&2
+    exit 1
+  fi
+}
+
 require_non_empty() {
   local value="$1"
   local name="$2"
@@ -172,7 +179,9 @@ terraform_state_manages_ecr_repository() {
 }
 
 aws_ecr_repository_exists() {
-  aws ecr describe-repositories --repository-names "${TF_VAR_ecr_repository_name}" >/dev/null 2>&1
+  aws ecr describe-repositories \
+    --region "${AWS_REGION}" \
+    --repository-names "${TF_VAR_ecr_repository_name}" >/dev/null 2>&1
 }
 
 set_ecr_repository_mode() {
@@ -241,7 +250,7 @@ terraform_init_remote() {
 
 terraform_migrate_state_remote() {
   mapfile -t backend_args < <(terraform_remote_backend_args)
-  terraform -chdir="${TERRAFORM_DIR}" init -input=false -migrate-state "${backend_args[@]}"
+  terraform -chdir="${TERRAFORM_DIR}" init -input=false -migrate-state -force-copy "${backend_args[@]}"
 }
 
 terraform_init_local() {
@@ -257,7 +266,7 @@ disable_remote_backend_override() {
 
 terraform_migrate_state_local() {
   disable_remote_backend_override
-  terraform -chdir="${TERRAFORM_DIR}" init -input=false -migrate-state
+  terraform -chdir="${TERRAFORM_DIR}" init -input=false -migrate-state -force-copy
 }
 
 terraform_state_manages_shared_bucket() {
@@ -265,22 +274,43 @@ terraform_state_manages_shared_bucket() {
 }
 
 aws_bucket_exists() {
-  aws s3api head-bucket --bucket "${EFFECTIVE_TF_STATE_BUCKET}" >/dev/null 2>&1
+  aws s3api head-bucket \
+    --region "${TF_STATE_REGION}" \
+    --bucket "${EFFECTIVE_TF_STATE_BUCKET}" >/dev/null 2>&1
 }
 
 remote_state_exists() {
   aws s3api head-object \
+    --region "${TF_STATE_REGION}" \
     --bucket "${EFFECTIVE_TF_STATE_BUCKET}" \
     --key "${TF_STATE_KEY}" >/dev/null 2>&1
 }
 
 eks_cluster_exists() {
-  aws eks describe-cluster --name "${EKS_CLUSTER_NAME}" >/dev/null 2>&1
+  aws eks describe-cluster \
+    --region "${AWS_REGION}" \
+    --name "${EKS_CLUSTER_NAME}" >/dev/null 2>&1
+}
+
+orphan_network_exists() {
+  local vpc_ids=""
+  vpc_ids="$(aws ec2 describe-vpcs \
+    --region "${AWS_REGION}" \
+    --filters "Name=tag:Name,Values=${EKS_CLUSTER_NAME}-vpc" \
+    --query 'Vpcs[].VpcId' \
+    --output text 2>/dev/null || true)"
+
+  [[ -n "${vpc_ids}" && "${vpc_ids}" != "None" ]]
 }
 
 fail_missing_remote_state_with_existing_resources() {
   if eks_cluster_exists; then
-    echo "O cluster EKS ${EKS_CLUSTER_NAME} ja existe, mas o state remoto ${EFFECTIVE_TF_STATE_BUCKET}/${TF_STATE_KEY} nao foi encontrado. O runner perdeu o state local de execucoes anteriores. Para recuperar com seguranca, execute o workflow manual 'Cleanup Orphan EKS Lab', depois rode 'Terraform Apply Lab' para recriar a infraestrutura com state remoto persistido, e so entao volte ao workflow de deploy." >&2
+    echo "O cluster EKS ${EKS_CLUSTER_NAME} ja existe, mas o state remoto ${EFFECTIVE_TF_STATE_BUCKET}/${TF_STATE_KEY} nao foi encontrado. O runner perdeu o state local de execucoes anteriores. Para recuperar com seguranca, execute o workflow manual 'Cleanup Orphan Lab Infra', depois rode 'Terraform Apply Lab' para recriar a infraestrutura com state remoto persistido, e so entao volte ao workflow de deploy." >&2
+    exit 1
+  fi
+
+  if orphan_network_exists; then
+    echo "A rede do laboratorio ${EKS_CLUSTER_NAME} ainda existe na AWS, mas o state remoto ${EFFECTIVE_TF_STATE_BUCKET}/${TF_STATE_KEY} nao foi encontrado. Para evitar duplicacao de VPC/subnets e outros recursos orfaos, execute o workflow manual 'Cleanup Orphan Lab Infra', depois rode 'Terraform Apply Lab' para recriar a infraestrutura com state remoto persistido." >&2
     exit 1
   fi
 }
@@ -371,6 +401,8 @@ run_destroy() {
 
 normalize_optional_envs
 
+require_cmd aws
+require_cmd terraform
 require_non_empty "${AWS_REGION}" "AWS_REGION"
 require_non_empty "${EKS_CLUSTER_NAME}" "EKS_CLUSTER_NAME"
 require_non_empty "${TF_VAR_kubernetes_version:-}" "TF_VAR_kubernetes_version"

@@ -1,11 +1,12 @@
 # GitHub Actions
 
-O deploy automatizado usa o workflow [deploy-lab.yml](/home/vandrep/projetos/oficina-soat/oficina-infra-k8s/.github/workflows/deploy-lab.yml).
+O deploy automatizado usa o workflow `./.github/workflows/deploy-lab.yml`.
 
 Para operacoes de infraestrutura sem deploy da aplicacao, use tambem:
 
-- [terraform-apply-lab.yml](/home/vandrep/projetos/oficina-soat/oficina-infra-k8s/.github/workflows/terraform-apply-lab.yml)
-- [terraform-destroy-lab.yml](/home/vandrep/projetos/oficina-soat/oficina-infra-k8s/.github/workflows/terraform-destroy-lab.yml)
+- `./.github/workflows/terraform-apply-lab.yml`
+- `./.github/workflows/terraform-destroy-lab.yml`
+- `./.github/workflows/cleanup-orphan-eks-lab.yml`
 
 ## Gatilho
 
@@ -15,6 +16,8 @@ Para operacoes de infraestrutura sem deploy da aplicacao, use tambem:
 O job usa o GitHub Environment `lab`.
 
 O workflow tambem aceita `organization secrets/variables` e `repository secrets/variables` com os mesmos nomes. A precedencia do GitHub Actions e: `environment` > `repository` > `organization`.
+
+Todos os workflows que alteram a infraestrutura compartilham o mesmo grupo de `concurrency`, entao `apply`, `deploy`, `destroy` e `cleanup` nao executam em paralelo no mesmo ambiente.
 
 ## Autenticação AWS
 
@@ -76,6 +79,8 @@ Se o bucket ainda nao existir, o script faz bootstrap com state local, cria o bu
 
 Se o bucket ja existir, o script o reutiliza normalmente. Quando o bucket ja faz parte do state desse ambiente, ele continua sendo gerenciado pelo Terraform; quando for um bucket externo preexistente, o workflow apenas o usa como backend sem tentar recria-lo.
 
-Se `TF_STATE_BUCKET` nao for informado, o workflow usa state local no runner do GitHub Actions. Isso serve apenas para bootstrap inicial, mas nao e adequado para automacao recorrente, porque o state nao persiste entre execucoes.
+Se `TF_STATE_BUCKET` nao for informado, o workflow deriva automaticamente o nome do bucket compartilhado a partir do cluster e da conta AWS, usa state local apenas durante o bootstrap e migra em seguida para backend remoto S3. Em outras palavras: a ausencia de `TF_STATE_BUCKET` nao desabilita o backend remoto; ela apenas faz o workflow calcular o nome do bucket automaticamente.
 
 No workflow manual de `destroy`, se o bucket S3 de backend fizer parte do state desse ambiente, o script migra o state para backend local antes de destruir a infraestrutura. Isso evita o bloqueio classico de tentar apagar o proprio bucket usado pelo backend remoto.
+
+Se um `apply` falhar depois de criar recursos AWS, mas antes de persistir o state remoto, use o workflow manual `Cleanup Orphan Lab Infra`. Ele remove o cluster EKS orfao e tambem a VPC/subnets/route tables/internet gateway/security groups associados ao laboratorio, permitindo um novo bootstrap limpo.

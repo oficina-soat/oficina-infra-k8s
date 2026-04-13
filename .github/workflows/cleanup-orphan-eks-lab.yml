@@ -1,15 +1,15 @@
-name: Cleanup Orphan EKS Lab
+name: Cleanup Orphan Lab Infra
 
 on:
   workflow_dispatch:
     inputs:
       confirm_cleanup:
-        description: "Digite CLEANUP para confirmar a remocao do cluster EKS orfao"
+        description: "Digite CLEANUP para confirmar a remocao da infraestrutura orfa do laboratorio"
         required: true
         type: string
 
 concurrency:
-  group: cleanup-orphan-eks-lab
+  group: lab-infra
   cancel-in-progress: false
 
 jobs:
@@ -35,6 +35,23 @@ jobs:
           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
 
-      - name: Cleanup orphan EKS resources
+      - name: Validate workflow configuration
+        shell: bash
+        run: |
+          required_vars=(
+            AWS_REGION
+            EKS_CLUSTER_NAME
+          )
+
+          for name in "${required_vars[@]}"; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "Configuracao obrigatoria ausente em vars/secrets do GitHub (organization, repository ou environment): ${name}" >&2
+              exit 1
+            fi
+          done
+
+          aws sts get-caller-identity >/dev/null
+
+      - name: Cleanup orphan lab resources
         shell: bash
         run: bash ./scripts/cleanup-orphan-eks.sh

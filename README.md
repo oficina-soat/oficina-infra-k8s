@@ -58,7 +58,7 @@ Em seguida, migre o state para backend remoto S3. Crie um arquivo local a partir
 
 ```bash
 cp terraform/environments/lab/backend.s3.tf.example terraform/environments/lab/backend.s3.tf
-terraform -chdir=terraform/environments/lab init -migrate-state \
+terraform -chdir=terraform/environments/lab init -migrate-state -force-copy \
   -backend-config="bucket=<bucket-criado>" \
   -backend-config="key=oficina/lab/terraform.tfstate" \
   -backend-config="region=<region>"

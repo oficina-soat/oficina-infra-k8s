@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: terraform-apply-lab
+  group: lab-infra
   cancel-in-progress: false
 
 jobs:
@@ -72,8 +72,10 @@ jobs:
             fi
           done
 
+          aws sts get-caller-identity >/dev/null
+
           if [[ -z "${TF_STATE_BUCKET:-}" ]]; then
-            echo "Aviso: TF_STATE_BUCKET ausente; o workflow usara state local temporario neste runner." >&2
+            echo "Aviso: TF_STATE_BUCKET ausente; o workflow usara o bucket compartilhado derivado do nome do cluster para bootstrap e backend remoto." >&2
           fi
 
       - name: Terraform apply
