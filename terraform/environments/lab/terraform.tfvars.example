@@ -1,5 +1,5 @@
 region       = "us-east-1"
-cluster_name = "simple-eks"
+cluster_name = "eks-lab"
 
 # Informe uma versao suportada pelo seu laboratorio/EKS.
 kubernetes_version = "1.35"
@@ -23,4 +23,4 @@ create_ecr_repository = true
 
 # O bucket S3 de dados compartilhados e criado por default.
 # Se quiser um nome fixo, descomente a linha abaixo.
-# terraform_shared_data_bucket_name = "tf-shared-simple-eks-<account-id>-us-east-1"
+# terraform_shared_data_bucket_name = "tf-shared-eks-lab-<account-id>-us-east-1"

@@ -241,7 +241,7 @@ terraform_init_remote() {
 
 terraform_migrate_state_remote() {
   mapfile -t backend_args < <(terraform_remote_backend_args)
-  terraform -chdir="${TERRAFORM_DIR}" init -input=false -migrate-state -reconfigure "${backend_args[@]}"
+  terraform -chdir="${TERRAFORM_DIR}" init -input=false -migrate-state "${backend_args[@]}"
 }
 
 terraform_init_local() {
@@ -257,7 +257,7 @@ disable_remote_backend_override() {
 
 terraform_migrate_state_local() {
   disable_remote_backend_override
-  terraform -chdir="${TERRAFORM_DIR}" init -input=false -migrate-state -reconfigure
+  terraform -chdir="${TERRAFORM_DIR}" init -input=false -migrate-state
 }
 
 terraform_state_manages_shared_bucket() {

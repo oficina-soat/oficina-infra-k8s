@@ -7,7 +7,7 @@ variable "region" {
 variable "cluster_name" {
   type        = string
   description = "Nome do cluster EKS do laboratorio."
-  default     = "simple-eks"
+  default     = "eks-lab"
 }
 
 variable "kubernetes_version" {
