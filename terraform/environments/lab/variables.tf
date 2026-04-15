@@ -155,3 +155,88 @@ variable "terraform_shared_data_bucket_force_destroy" {
   description = "Quando true, permite destruir o bucket S3 de dados compartilhados mesmo com objetos."
   default     = false
 }
+
+variable "create_api_gateway" {
+  type        = bool
+  description = "Quando true, cria um API Gateway HTTP API para publicar a aplicacao principal e/ou Lambdas."
+  default     = true
+}
+
+variable "api_gateway_name" {
+  type        = string
+  description = "Nome do API Gateway. Se nulo, usa `<cluster_name>-http-api`."
+  default     = null
+  nullable    = true
+}
+
+variable "api_gateway_stage_name" {
+  type        = string
+  description = "Nome do stage do API Gateway. O default `$default` evita custo e deploys extras."
+  default     = "$default"
+}
+
+variable "api_gateway_enable_access_logs" {
+  type        = bool
+  description = "Quando true, habilita access logs do API Gateway em CloudWatch."
+  default     = true
+}
+
+variable "api_gateway_access_log_retention_in_days" {
+  type        = number
+  description = "Retencao dos access logs do API Gateway em dias."
+  default     = 14
+}
+
+variable "api_gateway_default_route_throttling_burst_limit" {
+  type        = number
+  description = "Burst limit padrao do API Gateway, ajustado para laboratorio."
+  default     = 50
+}
+
+variable "api_gateway_default_route_throttling_rate_limit" {
+  type        = number
+  description = "Rate limit padrao do API Gateway, ajustado para laboratorio."
+  default     = 25
+}
+
+variable "api_gateway_vpc_link_subnet_ids" {
+  type        = list(string)
+  description = "Subnets usadas pelo VPC Link quando houver rotas privadas. Se vazio, usa as subnets publicas da VPC do laboratorio."
+  default     = []
+}
+
+variable "api_gateway_vpc_link_security_group_ids" {
+  type        = list(string)
+  description = "Security groups existentes para o VPC Link. Se vazio, o Terraform pode criar um SG dedicado."
+  default     = []
+}
+
+variable "api_gateway_create_vpc_link_security_group" {
+  type        = bool
+  description = "Quando true e nenhum SG for informado, cria um security group dedicado para o VPC Link."
+  default     = true
+}
+
+variable "api_gateway_http_routes" {
+  type = map(object({
+    integration_uri      = string
+    integration_method   = optional(string, "ANY")
+    authorization_type   = optional(string, "NONE")
+    connection_type      = optional(string, "INTERNET")
+    timeout_milliseconds = optional(number, 30000)
+  }))
+  description = "Rotas HTTP_PROXY do API Gateway. Permite, por exemplo, publicar a aplicacao principal atras do gateway sem depender dela no apply quando o mapa estiver vazio."
+  default     = {}
+}
+
+variable "api_gateway_lambda_routes" {
+  type = map(object({
+    invoke_arn             = string
+    function_name          = optional(string)
+    authorization_type     = optional(string, "NONE")
+    payload_format_version = optional(string, "2.0")
+    timeout_milliseconds   = optional(number, 30000)
+  }))
+  description = "Rotas AWS_PROXY para Lambdas. Quando `function_name` for informado, o Terraform tambem cria a permissao de invocacao para o API Gateway."
+  default     = {}
+}

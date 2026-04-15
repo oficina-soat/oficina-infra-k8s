@@ -5,9 +5,14 @@ set -euo pipefail
 AWS_REGION="${AWS_REGION:-}"
 EKS_CLUSTER_NAME="${EKS_CLUSTER_NAME:-}"
 NODE_GROUP_NAME="${NODE_GROUP_NAME:-${EKS_CLUSTER_NAME}-ng}"
+API_GATEWAY_NAME="${API_GATEWAY_NAME:-${EKS_CLUSTER_NAME}-http-api}"
+API_GATEWAY_VPC_LINK_NAME="${API_GATEWAY_VPC_LINK_NAME:-${API_GATEWAY_NAME}-vpc-link}"
+API_GATEWAY_LOG_GROUP_NAME="${API_GATEWAY_LOG_GROUP_NAME:-/aws/apigateway/${API_GATEWAY_NAME}}"
 NETWORK_INTERFACE_WAIT_SECONDS="${NETWORK_INTERFACE_WAIT_SECONDS:-600}"
 VPC_CLEANUP_WAIT_SECONDS="${VPC_CLEANUP_WAIT_SECONDS:-900}"
 VPC_CLEANUP_POLL_SECONDS="${VPC_CLEANUP_POLL_SECONDS:-15}"
+VPC_LINK_DELETE_WAIT_SECONDS="${VPC_LINK_DELETE_WAIT_SECONDS:-600}"
+VPC_LINK_DELETE_POLL_SECONDS="${VPC_LINK_DELETE_POLL_SECONDS:-10}"
 
 log() {
   printf '\n[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
@@ -41,6 +46,28 @@ cluster_exists() {
   aws eks describe-cluster \
     --region "${AWS_REGION}" \
     --name "${EKS_CLUSTER_NAME}" >/dev/null 2>&1
+}
+
+list_api_gateway_ids() {
+  aws apigatewayv2 get-apis \
+    --region "${AWS_REGION}" \
+    --query "Items[?Name==\`${API_GATEWAY_NAME}\`].ApiId" \
+    --output text 2>/dev/null || true
+}
+
+list_api_gateway_vpc_link_ids() {
+  aws apigatewayv2 get-vpc-links \
+    --region "${AWS_REGION}" \
+    --query "Items[?Name==\`${API_GATEWAY_VPC_LINK_NAME}\`].VpcLinkId" \
+    --output text 2>/dev/null || true
+}
+
+api_gateway_vpc_link_exists() {
+  local vpc_link_id="$1"
+
+  aws apigatewayv2 get-vpc-link \
+    --region "${AWS_REGION}" \
+    --vpc-link-id "${vpc_link_id}" >/dev/null 2>&1
 }
 
 list_cluster_vpcs() {
@@ -122,6 +149,75 @@ list_vpc_network_interfaces() {
 has_ids() {
   local ids="${1:-}"
   [[ -n "${ids}" && "${ids}" != "None" ]]
+}
+
+delete_api_gateways() {
+  local api_ids=""
+  api_ids="$(list_api_gateway_ids)"
+
+  if ! has_ids "${api_ids}"; then
+    log "Nenhum API Gateway com nome ${API_GATEWAY_NAME} encontrado; seguindo"
+    return
+  fi
+
+  for api_id in ${api_ids}; do
+    log "Removendo API Gateway ${api_id} (${API_GATEWAY_NAME})"
+    aws apigatewayv2 delete-api \
+      --region "${AWS_REGION}" \
+      --api-id "${api_id}" >/dev/null 2>&1 || true
+  done
+}
+
+wait_for_vpc_link_deletion() {
+  local vpc_link_id="$1"
+  local deadline=$((SECONDS + VPC_LINK_DELETE_WAIT_SECONDS))
+
+  while api_gateway_vpc_link_exists "${vpc_link_id}"; do
+    if (( SECONDS >= deadline )); then
+      echo "O VPC Link ${vpc_link_id} ainda existe apos ${VPC_LINK_DELETE_WAIT_SECONDS}s" >&2
+      exit 1
+    fi
+
+    log "Aguardando remocao do VPC Link ${vpc_link_id}"
+    sleep "${VPC_LINK_DELETE_POLL_SECONDS}"
+  done
+}
+
+delete_api_gateway_vpc_links() {
+  local vpc_link_ids=""
+  vpc_link_ids="$(list_api_gateway_vpc_link_ids)"
+
+  if ! has_ids "${vpc_link_ids}"; then
+    log "Nenhum VPC Link com nome ${API_GATEWAY_VPC_LINK_NAME} encontrado; seguindo"
+    return
+  fi
+
+  for vpc_link_id in ${vpc_link_ids}; do
+    log "Removendo VPC Link ${vpc_link_id} (${API_GATEWAY_VPC_LINK_NAME})"
+    aws apigatewayv2 delete-vpc-link \
+      --region "${AWS_REGION}" \
+      --vpc-link-id "${vpc_link_id}" >/dev/null 2>&1 || true
+    wait_for_vpc_link_deletion "${vpc_link_id}"
+  done
+}
+
+delete_api_gateway_log_group() {
+  local log_group_name=""
+  log_group_name="$(aws logs describe-log-groups \
+    --region "${AWS_REGION}" \
+    --log-group-name-prefix "${API_GATEWAY_LOG_GROUP_NAME}" \
+    --query "logGroups[?logGroupName==\`${API_GATEWAY_LOG_GROUP_NAME}\`].logGroupName" \
+    --output text 2>/dev/null || true)"
+
+  if [[ -z "${log_group_name}" || "${log_group_name}" == "None" ]]; then
+    log "Nenhum log group do API Gateway ${API_GATEWAY_LOG_GROUP_NAME} encontrado; seguindo"
+    return
+  fi
+
+  log "Removendo log group ${API_GATEWAY_LOG_GROUP_NAME}"
+  aws logs delete-log-group \
+    --region "${AWS_REGION}" \
+    --log-group-name "${API_GATEWAY_LOG_GROUP_NAME}" >/dev/null 2>&1 || true
 }
 
 log_vpc_inventory() {
@@ -325,6 +421,10 @@ if cluster_exists; then
 else
   log "Cluster ${EKS_CLUSTER_NAME} nao encontrado; nada para remover"
 fi
+
+delete_api_gateways
+delete_api_gateway_vpc_links
+delete_api_gateway_log_group
 
 vpc_ids="$(list_cluster_vpcs)"
 

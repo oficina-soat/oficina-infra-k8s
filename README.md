@@ -7,6 +7,7 @@ O projeto provisiona a base da nuvem e publica a aplicação com:
 - VPC enxuta com duas sub-redes públicas para evitar NAT Gateway
 - cluster Amazon EKS com managed node group mínimo para laboratório
 - repositório Amazon ECR opcional para a imagem da aplicação
+- API Gateway HTTP API com logs e throttling, pronto para expor app HTTP e Lambdas de forma opcional
 - manifests Kubernetes organizados com `kustomize` em `base`, `components`, `addons` e `overlays`
 - workflow de GitHub Actions para aplicar Terraform e fazer deploy no cluster após merge em branch protegida
 - workflows manuais de GitHub Actions para `terraform apply` e `terraform destroy` sem depender de novo deploy da aplicação
@@ -15,7 +16,7 @@ O projeto provisiona a base da nuvem e publica a aplicação com:
 
 - banco de dados PostgreSQL
 - VPC privada, NAT Gateway ou topologia de produção
-- domínio, ingress público ou API Gateway
+- domínio, CDN ou WAF
 - pipeline de build da imagem da aplicação
 - migrations de schema da aplicação
 
@@ -95,6 +96,10 @@ Variáveis principais:
 - `public_subnet_cidrs` e `azs`: rede mínima do laboratório
 - `cluster_endpoint_public_access_cidrs`: CIDRs permitidos no endpoint público do EKS
 - `ecr_repository_name` e `create_ecr_repository`: repositório ECR da aplicação
+- `create_api_gateway`: cria o HTTP API do laboratório. Default `true`
+- `api_gateway_http_routes`: rotas `HTTP_PROXY` para expor a aplicação principal ou outros backends HTTP
+- `api_gateway_lambda_routes`: rotas `AWS_PROXY` para expor Lambdas existentes
+- `api_gateway_vpc_link_subnet_ids`, `api_gateway_vpc_link_security_group_ids` e `api_gateway_create_vpc_link_security_group`: usados apenas quando uma rota HTTP precisar de integração privada via `VPC_LINK`
 - `create_terraform_shared_data_bucket`, `terraform_shared_data_bucket_name` e `terraform_shared_data_bucket_force_destroy`: bucket S3 usado pelos dados compartilhados do Terraform
 
 ## Aplicação da infraestrutura
@@ -111,9 +116,61 @@ Saídas principais:
 - `kubeconfig_command`
 - `ecr_repository_name`
 - `ecr_repository_url`
+- `api_gateway_endpoint`
+- `api_gateway_invoke_url`
 - `terraform_shared_data_bucket_name`
 - `vpc_id`
 - `public_subnet_ids`
+
+## API Gateway
+
+O ambiente `lab` agora cria um `API Gateway HTTP API` por default porque ele oferece o melhor equilíbrio para laboratório acadêmico: custo por requisição, menor complexidade operacional que o `REST API` e suporte tanto a backends HTTP quanto a Lambda.
+
+O gateway não exige que a aplicação principal nem os Lambdas existam no momento do `apply`. Se `api_gateway_http_routes` e `api_gateway_lambda_routes` ficarem vazios, ele é criado apenas como front door pronta para uso posterior.
+
+Para a aplicação principal, há dois padrões suportados:
+
+- rota HTTP pública, usando `HTTP_PROXY` com uma URL já publicada
+- rota privada, usando `HTTP_PROXY` com `connection_type = "VPC_LINK"` e `integration_uri` apontando para um listener ARN de ALB
+
+Para Lambdas, use `api_gateway_lambda_routes`. Quando `function_name` também for informado, o Terraform cria a permissão `aws_lambda_permission` para o API Gateway invocar a função.
+
+Exemplo mínimo com app HTTP pública e um Lambda:
+
+```hcl
+api_gateway_http_routes = {
+  "ANY /app" = {
+    integration_uri = "https://app-lab.exemplo.edu.br/app"
+  }
+  "ANY /app/{proxy+}" = {
+    integration_uri = "https://app-lab.exemplo.edu.br/app/{proxy}"
+  }
+}
+
+api_gateway_lambda_routes = {
+  "POST /payments" = {
+    invoke_arn    = "arn:aws:lambda:us-east-1:123456789012:function:payments:live"
+    function_name = "arn:aws:lambda:us-east-1:123456789012:function:payments:live"
+  }
+}
+```
+
+Se a aplicação principal for publicada por ALB privado, troque a rota HTTP para:
+
+```hcl
+api_gateway_http_routes = {
+  "ANY /app" = {
+    integration_uri = "arn:aws:elasticloadbalancing:us-east-1:123456789012:listener/app/oficina/abc123/def456"
+    connection_type = "VPC_LINK"
+  }
+  "ANY /app/{proxy+}" = {
+    integration_uri = "arn:aws:elasticloadbalancing:us-east-1:123456789012:listener/app/oficina/abc123/def456"
+    connection_type = "VPC_LINK"
+  }
+}
+```
+
+Nesse caso, use o output `api_gateway_vpc_link_security_group_id` para liberar entrada no ALB a partir do VPC Link.
 
 ## Deploy da aplicação
 
@@ -192,6 +249,18 @@ Valores opcionais no Environment:
 - `EKS_CLUSTER_ENDPOINT_PUBLIC_ACCESS_CIDRS`: lista JSON de CIDRs
 - `ECR_REPOSITORY_NAME`
 - `CREATE_ECR_REPOSITORY`
+- `CREATE_API_GATEWAY`
+- `API_GATEWAY_NAME`
+- `API_GATEWAY_STAGE_NAME`
+- `API_GATEWAY_ENABLE_ACCESS_LOGS`
+- `API_GATEWAY_ACCESS_LOG_RETENTION_IN_DAYS`
+- `API_GATEWAY_DEFAULT_ROUTE_THROTTLING_BURST_LIMIT`
+- `API_GATEWAY_DEFAULT_ROUTE_THROTTLING_RATE_LIMIT`
+- `API_GATEWAY_VPC_LINK_SUBNET_IDS`: lista JSON de subnets
+- `API_GATEWAY_VPC_LINK_SECURITY_GROUP_IDS`: lista JSON de security groups
+- `API_GATEWAY_CREATE_VPC_LINK_SECURITY_GROUP`
+- `API_GATEWAY_HTTP_ROUTES`: objeto JSON compatível com `api_gateway_http_routes`
+- `API_GATEWAY_LAMBDA_ROUTES`: objeto JSON compatível com `api_gateway_lambda_routes`
 - `CREATE_TERRAFORM_SHARED_DATA_BUCKET`
 - `TERRAFORM_SHARED_DATA_BUCKET_NAME`
 - `TERRAFORM_SHARED_DATA_BUCKET_FORCE_DESTROY`
@@ -217,6 +286,8 @@ O workflow:
 - executa o deploy da aplicação no cluster apenas quando `DEPLOY_APP=true`
 - monta `IMAGE_REF` automaticamente com o output `ecr_repository_url` apenas quando `DEPLOY_APP=true` e apenas `IMAGE_TAG` for informado
 
+O API Gateway continua sendo aplicado mesmo quando `DEPLOY_APP=false`, o que permite preparar a front door antes da publicação da aplicação principal ou dos Lambdas.
+
 Sem `TF_STATE_BUCKET`, o workflow usa state local temporário no runner. Isso só serve para execuções efemeras, porque não preserva o state entre execuções.
 
 ## Operacoes manuais de Terraform
@@ -224,6 +295,8 @@ Sem `TF_STATE_BUCKET`, o workflow usa state local temporário no runner. Isso s�
 Use o workflow `Terraform Apply Lab` quando quiser reprovisionar apenas a infraestrutura, sem redeploy da aplicacao.
 
 Use o workflow `Terraform Destroy Lab` quando quiser remover a infraestrutura manualmente. Esse workflow exige o valor `DESTROY` no campo de confirmação. Se o bucket S3 de backend fizer parte do state desse ambiente, o workflow migra o state para backend local antes do `destroy`, para conseguir apagar o bucket tambem.
+
+Use o workflow `Cleanup Orphan Lab Infra` quando houver recursos criados na AWS sem state remoto recuperável. Ele remove o cluster EKS órfão, a rede associada e também o API Gateway do laboratório, incluindo `VPC Link` e `CloudWatch Log Group`, usando `EKS_CLUSTER_NAME` e `API_GATEWAY_NAME` para localizar os recursos.
 
 ## Validações recomendadas
 
@@ -243,6 +316,7 @@ Defaults pensados para laboratório acadêmico:
 - managed node group mínimo
 - `t3.medium` por default
 - repositório ECR opcional
+- API Gateway HTTP API com logs e throttling default
 - MailHog dentro do cluster
 - Keycloak apenas como addon opcional de demonstração
 

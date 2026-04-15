@@ -23,6 +23,7 @@ jobs:
     env:
       AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
       EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME || 'eks-lab' }}
+      API_GATEWAY_NAME: ${{ vars.API_GATEWAY_NAME || format('{0}-http-api', vars.EKS_CLUSTER_NAME || 'eks-lab') }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -41,6 +42,7 @@ jobs:
           required_vars=(
             AWS_REGION
             EKS_CLUSTER_NAME
+            API_GATEWAY_NAME
           )
 
           for name in "${required_vars[@]}"; do

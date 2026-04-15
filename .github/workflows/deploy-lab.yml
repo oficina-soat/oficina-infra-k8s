@@ -47,6 +47,18 @@ jobs:
       TF_VAR_cluster_endpoint_public_access_cidrs: ${{ vars.EKS_CLUSTER_ENDPOINT_PUBLIC_ACCESS_CIDRS }}
       TF_VAR_ecr_repository_name: ${{ vars.ECR_REPOSITORY_NAME || 'oficina' }}
       TF_VAR_create_ecr_repository: ${{ vars.CREATE_ECR_REPOSITORY || 'false' }}
+      TF_VAR_create_api_gateway: ${{ vars.CREATE_API_GATEWAY || 'true' }}
+      TF_VAR_api_gateway_name: ${{ vars.API_GATEWAY_NAME }}
+      TF_VAR_api_gateway_stage_name: ${{ vars.API_GATEWAY_STAGE_NAME || '$default' }}
+      TF_VAR_api_gateway_enable_access_logs: ${{ vars.API_GATEWAY_ENABLE_ACCESS_LOGS || 'true' }}
+      TF_VAR_api_gateway_access_log_retention_in_days: ${{ vars.API_GATEWAY_ACCESS_LOG_RETENTION_IN_DAYS || '14' }}
+      TF_VAR_api_gateway_default_route_throttling_burst_limit: ${{ vars.API_GATEWAY_DEFAULT_ROUTE_THROTTLING_BURST_LIMIT || '50' }}
+      TF_VAR_api_gateway_default_route_throttling_rate_limit: ${{ vars.API_GATEWAY_DEFAULT_ROUTE_THROTTLING_RATE_LIMIT || '25' }}
+      TF_VAR_api_gateway_vpc_link_subnet_ids: ${{ vars.API_GATEWAY_VPC_LINK_SUBNET_IDS }}
+      TF_VAR_api_gateway_vpc_link_security_group_ids: ${{ vars.API_GATEWAY_VPC_LINK_SECURITY_GROUP_IDS }}
+      TF_VAR_api_gateway_create_vpc_link_security_group: ${{ vars.API_GATEWAY_CREATE_VPC_LINK_SECURITY_GROUP || 'true' }}
+      TF_VAR_api_gateway_http_routes: ${{ vars.API_GATEWAY_HTTP_ROUTES }}
+      TF_VAR_api_gateway_lambda_routes: ${{ vars.API_GATEWAY_LAMBDA_ROUTES }}
       TF_VAR_create_terraform_shared_data_bucket: ${{ vars.CREATE_TERRAFORM_SHARED_DATA_BUCKET || 'true' }}
       TF_VAR_terraform_shared_data_bucket_name: ${{ vars.TERRAFORM_SHARED_DATA_BUCKET_NAME || vars.TF_STATE_BUCKET }}
       TF_VAR_terraform_shared_data_bucket_force_destroy: ${{ vars.TERRAFORM_SHARED_DATA_BUCKET_FORCE_DESTROY || 'false' }}
