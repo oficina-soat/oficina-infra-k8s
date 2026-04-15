@@ -24,3 +24,24 @@ create_ecr_repository = true
 # O bucket S3 de dados compartilhados e criado por default.
 # Se quiser um nome fixo, descomente a linha abaixo.
 # terraform_shared_data_bucket_name = "tf-shared-eks-lab-<account-id>-us-east-1"
+
+# O API Gateway HTTP API e criado por default, mas pode ficar sem rotas
+# ate que a aplicacao principal e/ou os Lambdas existam.
+#
+# Exemplo para publicar a aplicacao principal por URL publica:
+# api_gateway_http_routes = {
+#   "ANY /app" = {
+#     integration_uri = "https://app-lab.exemplo.edu.br/app"
+#   }
+#   "ANY /app/{proxy+}" = {
+#     integration_uri = "https://app-lab.exemplo.edu.br/app/{proxy}"
+#   }
+# }
+#
+# Exemplo para publicar um Lambda:
+# api_gateway_lambda_routes = {
+#   "POST /payments" = {
+#     invoke_arn    = "arn:aws:lambda:us-east-1:415459106622:function:payments:live"
+#     function_name = "arn:aws:lambda:us-east-1:415459106622:function:payments:live"
+#   }
+# }

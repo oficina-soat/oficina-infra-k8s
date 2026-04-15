@@ -16,6 +16,7 @@ O repositório segue uma organização inspirada em boas práticas de Terraform:
 - `terraform/modules/network/`: VPC, subnets públicas e rotas
 - `terraform/modules/eks/`: cluster EKS, access entry e managed node group
 - `terraform/modules/ecr/`: repositório ECR opcional para a imagem da aplicação
+- `terraform/modules/api_gateway/`: API Gateway HTTP API com rotas opcionais para backends HTTP e Lambda
 - `terraform/modules/terraform_shared_data_bucket/`: bucket S3 para dados compartilhados e backend remoto do Terraform
 
 ## Ambiente

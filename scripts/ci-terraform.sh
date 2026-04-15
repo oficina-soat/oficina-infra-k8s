@@ -65,6 +65,11 @@ normalize_optional_envs() {
   unset_if_empty "TF_VAR_eks_node_role_arn"
   unset_if_empty "TF_VAR_eks_access_principal_arn"
   unset_if_empty "TF_VAR_terraform_shared_data_bucket_name"
+  unset_if_empty "TF_VAR_api_gateway_name"
+  unset_if_empty "TF_VAR_api_gateway_vpc_link_subnet_ids"
+  unset_if_empty "TF_VAR_api_gateway_vpc_link_security_group_ids"
+  unset_if_empty "TF_VAR_api_gateway_http_routes"
+  unset_if_empty "TF_VAR_api_gateway_lambda_routes"
 }
 
 aws_caller_identity() {
@@ -320,6 +325,37 @@ orphan_network_ids() {
     --output text 2>/dev/null || true
 }
 
+effective_api_gateway_name() {
+  if [[ -n "${TF_VAR_api_gateway_name:-}" ]]; then
+    printf '%s\n' "${TF_VAR_api_gateway_name}"
+    return
+  fi
+
+  printf '%s-http-api\n' "${EKS_CLUSTER_NAME}"
+}
+
+orphan_api_gateway_exists() {
+  local api_gateway_name=""
+  local api_ids=""
+  api_gateway_name="$(effective_api_gateway_name)"
+  api_ids="$(aws apigatewayv2 get-apis \
+    --region "${AWS_REGION}" \
+    --query "Items[?Name==\`${api_gateway_name}\`].ApiId" \
+    --output text 2>/dev/null || true)"
+
+  [[ -n "${api_ids}" && "${api_ids}" != "None" ]]
+}
+
+orphan_api_gateway_ids() {
+  local api_gateway_name=""
+  api_gateway_name="$(effective_api_gateway_name)"
+
+  aws apigatewayv2 get-apis \
+    --region "${AWS_REGION}" \
+    --query "Items[?Name==\`${api_gateway_name}\`].ApiId" \
+    --output text 2>/dev/null || true
+}
+
 fail_missing_remote_state_with_existing_resources() {
   if eks_cluster_exists; then
     echo "O cluster EKS ${EKS_CLUSTER_NAME} ja existe, mas o state remoto ${EFFECTIVE_TF_STATE_BUCKET}/${TF_STATE_KEY} nao foi encontrado. O runner perdeu o state local de execucoes anteriores. Para recuperar com seguranca, execute o workflow manual 'Cleanup Orphan Lab Infra', depois rode 'Terraform Apply Lab' para recriar a infraestrutura com state remoto persistido, e so entao volte ao workflow de deploy." >&2
@@ -328,6 +364,11 @@ fail_missing_remote_state_with_existing_resources() {
 
   if orphan_network_exists; then
     echo "A rede do laboratorio ${EKS_CLUSTER_NAME} ainda existe na AWS (VPCs: $(orphan_network_ids)), mas o state remoto ${EFFECTIVE_TF_STATE_BUCKET}/${TF_STATE_KEY} nao foi encontrado. Para evitar duplicacao de VPC/subnets e outros recursos orfaos, execute o workflow manual 'Cleanup Orphan Lab Infra', depois rode 'Terraform Apply Lab' para recriar a infraestrutura com state remoto persistido." >&2
+    exit 1
+  fi
+
+  if orphan_api_gateway_exists; then
+    echo "O API Gateway do laboratorio $(effective_api_gateway_name) ainda existe na AWS (APIs: $(orphan_api_gateway_ids)), mas o state remoto ${EFFECTIVE_TF_STATE_BUCKET}/${TF_STATE_KEY} nao foi encontrado. Para evitar duplicacao do gateway, execute o workflow manual 'Cleanup Orphan Lab Infra', depois rode 'Terraform Apply Lab' para recriar a infraestrutura com state remoto persistido." >&2
     exit 1
   fi
 }

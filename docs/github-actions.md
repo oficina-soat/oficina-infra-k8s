@@ -56,6 +56,18 @@ Variáveis opcionais:
 - `EKS_CLUSTER_ENDPOINT_PUBLIC_ACCESS_CIDRS`: lista JSON de CIDRs
 - `ECR_REPOSITORY_NAME`
 - `CREATE_ECR_REPOSITORY`
+- `CREATE_API_GATEWAY`
+- `API_GATEWAY_NAME`
+- `API_GATEWAY_STAGE_NAME`
+- `API_GATEWAY_ENABLE_ACCESS_LOGS`
+- `API_GATEWAY_ACCESS_LOG_RETENTION_IN_DAYS`
+- `API_GATEWAY_DEFAULT_ROUTE_THROTTLING_BURST_LIMIT`
+- `API_GATEWAY_DEFAULT_ROUTE_THROTTLING_RATE_LIMIT`
+- `API_GATEWAY_VPC_LINK_SUBNET_IDS`: lista JSON de subnets
+- `API_GATEWAY_VPC_LINK_SECURITY_GROUP_IDS`: lista JSON de security groups
+- `API_GATEWAY_CREATE_VPC_LINK_SECURITY_GROUP`
+- `API_GATEWAY_HTTP_ROUTES`: objeto JSON compatível com `api_gateway_http_routes`
+- `API_GATEWAY_LAMBDA_ROUTES`: objeto JSON compatível com `api_gateway_lambda_routes`
 - `CREATE_TERRAFORM_SHARED_DATA_BUCKET`
 - `TERRAFORM_SHARED_DATA_BUCKET_NAME`
 - `TERRAFORM_SHARED_DATA_BUCKET_FORCE_DESTROY`
@@ -84,4 +96,4 @@ Se `TF_STATE_BUCKET` nao for informado, o workflow deriva automaticamente o nome
 
 No workflow manual de `destroy`, se o bucket S3 de backend fizer parte do state desse ambiente, o script migra o state para backend local antes de destruir a infraestrutura. Isso evita o bloqueio classico de tentar apagar o proprio bucket usado pelo backend remoto.
 
-Se um `apply` falhar depois de criar recursos AWS, mas antes de persistir o state remoto, use o workflow manual `Cleanup Orphan Lab Infra`. Ele remove o cluster EKS orfao e tambem a VPC/subnets/route tables/internet gateway/security groups associados ao laboratorio, permitindo um novo bootstrap limpo.
+Se um `apply` falhar depois de criar recursos AWS, mas antes de persistir o state remoto, use o workflow manual `Cleanup Orphan Lab Infra`. Ele remove o cluster EKS orfao, a VPC/subnets/route tables/internet gateway/security groups associados ao laboratorio e tambem o API Gateway do lab, incluindo `VPC Link` e o log group `/aws/apigateway/<API_GATEWAY_NAME>`, permitindo um novo bootstrap limpo.
