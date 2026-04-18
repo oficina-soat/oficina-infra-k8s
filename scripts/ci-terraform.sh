@@ -13,6 +13,9 @@ TF_STATE_KEY="${TF_STATE_KEY:-oficina/lab/terraform.tfstate}"
 TF_STATE_REGION="${TF_STATE_REGION:-${AWS_REGION}}"
 TF_STATE_DYNAMODB_TABLE="${TF_STATE_DYNAMODB_TABLE:-}"
 TERRAFORM_ACTION="${TERRAFORM_ACTION:-apply}"
+TERRAFORM_APPLY_TARGETS="${TERRAFORM_APPLY_TARGETS:-}"
+TERRAFORM_DESTROY_TARGETS="${TERRAFORM_DESTROY_TARGETS:-}"
+TERRAFORM_REQUIRE_REMOTE_STATE="${TERRAFORM_REQUIRE_REMOTE_STATE:-false}"
 BACKEND_S3_TEMPLATE="${TERRAFORM_DIR}/backend.s3.tf.example"
 EFFECTIVE_TF_STATE_BUCKET=""
 backend_override_file=""
@@ -70,6 +73,17 @@ normalize_optional_envs() {
   unset_if_empty "TF_VAR_api_gateway_vpc_link_security_group_ids"
   unset_if_empty "TF_VAR_api_gateway_http_routes"
   unset_if_empty "TF_VAR_api_gateway_lambda_routes"
+}
+
+is_truthy() {
+  case "${1:-}" in
+    true | TRUE | True | 1 | yes | YES | Yes)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
 }
 
 aws_caller_identity() {
@@ -271,6 +285,32 @@ terraform_init_local() {
   terraform -chdir="${TERRAFORM_DIR}" init -input=false -reconfigure
 }
 
+terraform_apply() {
+  local args=("-input=false" "-auto-approve")
+  local target=""
+
+  if [[ -n "${TERRAFORM_APPLY_TARGETS:-}" ]]; then
+    for target in ${TERRAFORM_APPLY_TARGETS}; do
+      args+=("-target=${target}")
+    done
+  fi
+
+  terraform -chdir="${TERRAFORM_DIR}" apply "${args[@]}"
+}
+
+terraform_destroy() {
+  local args=("-input=false" "-auto-approve")
+  local target=""
+
+  if [[ -n "${TERRAFORM_DESTROY_TARGETS:-}" ]]; then
+    for target in ${TERRAFORM_DESTROY_TARGETS}; do
+      args+=("-target=${target}")
+    done
+  fi
+
+  terraform -chdir="${TERRAFORM_DIR}" destroy "${args[@]}"
+}
+
 disable_remote_backend_override() {
   if [[ -n "${backend_override_file}" && -f "${backend_override_file}" ]]; then
     rm -f "${backend_override_file}"
@@ -376,7 +416,31 @@ fail_missing_remote_state_with_existing_resources() {
 run_apply() {
   EFFECTIVE_TF_STATE_BUCKET="$(resolve_effective_backend_bucket)"
 
-  if aws_bucket_exists; then
+  if is_truthy "${TERRAFORM_REQUIRE_REMOTE_STATE}"; then
+    if ! aws_bucket_exists; then
+      echo "O bucket de backend ${EFFECTIVE_TF_STATE_BUCKET} nao existe. Esta execucao exige state remoto existente para alterar somente os recursos desejados." >&2
+      exit 1
+    fi
+
+    export TF_VAR_terraform_shared_data_bucket_name="${EFFECTIVE_TF_STATE_BUCKET}"
+
+    if ! remote_state_exists; then
+      echo "O state remoto ${EFFECTIVE_TF_STATE_BUCKET}/${TF_STATE_KEY} nao foi encontrado. Execute o bootstrap/apply completo antes de usar esta acao pontual." >&2
+      exit 1
+    fi
+
+    log "Bucket ${EFFECTIVE_TF_STATE_BUCKET} e state remoto encontrados; configurando backend remoto."
+    create_backend_override
+    terraform_init_remote
+
+    if terraform_state_manages_shared_bucket; then
+      log "Bucket ${EFFECTIVE_TF_STATE_BUCKET} ja esta no state deste ambiente; mantendo gerenciamento pelo Terraform."
+      export TF_VAR_create_terraform_shared_data_bucket="true"
+    else
+      log "Bucket ${EFFECTIVE_TF_STATE_BUCKET} existe fora do state deste ambiente; reutilizando sem tentar recriar."
+      export TF_VAR_create_terraform_shared_data_bucket="false"
+    fi
+  elif aws_bucket_exists; then
     export TF_VAR_terraform_shared_data_bucket_name="${EFFECTIVE_TF_STATE_BUCKET}"
 
     if remote_state_exists; then
@@ -399,7 +463,7 @@ run_apply() {
       terraform_init_local
       set_shared_bucket_mode
       set_ecr_repository_mode
-      terraform -chdir="${TERRAFORM_DIR}" apply -input=false -auto-approve
+      terraform_apply
 
       log "Migrando o state local para o backend S3 em ${EFFECTIVE_TF_STATE_BUCKET}."
       create_backend_override
@@ -410,7 +474,7 @@ run_apply() {
     terraform_init_local
     set_shared_bucket_mode
     set_ecr_repository_mode
-    terraform -chdir="${TERRAFORM_DIR}" apply -input=false -auto-approve
+    terraform_apply
 
     log "Migrando o state local para o backend S3 em ${EFFECTIVE_TF_STATE_BUCKET}."
     create_backend_override
@@ -418,14 +482,40 @@ run_apply() {
   fi
 
   export TF_VAR_terraform_shared_data_bucket_name="${EFFECTIVE_TF_STATE_BUCKET}"
-  set_shared_bucket_mode
-  set_ecr_repository_mode
-  terraform -chdir="${TERRAFORM_DIR}" apply -input=false -auto-approve
+
+  if [[ -z "${TERRAFORM_APPLY_TARGETS:-}" ]]; then
+    set_shared_bucket_mode
+    set_ecr_repository_mode
+  fi
+
+  terraform_apply
   write_ecr_repository_url_file
 }
 
 run_destroy() {
   EFFECTIVE_TF_STATE_BUCKET="$(resolve_effective_backend_bucket)"
+
+  if [[ -n "${TERRAFORM_DESTROY_TARGETS:-}" ]]; then
+    if ! aws_bucket_exists; then
+      echo "O bucket de backend ${EFFECTIVE_TF_STATE_BUCKET} nao existe. Esta execucao exige state remoto existente para destruir somente os recursos desejados." >&2
+      exit 1
+    fi
+
+    export TF_VAR_terraform_shared_data_bucket_name="${EFFECTIVE_TF_STATE_BUCKET}"
+
+    if ! remote_state_exists; then
+      echo "O state remoto ${EFFECTIVE_TF_STATE_BUCKET}/${TF_STATE_KEY} nao foi encontrado. Execute o bootstrap/apply completo antes de usar esta acao pontual." >&2
+      exit 1
+    fi
+
+    log "Bucket ${EFFECTIVE_TF_STATE_BUCKET} e state remoto encontrados; configurando backend remoto."
+    create_backend_override
+    terraform_init_remote
+
+    log "Executando destroy direcionado para: ${TERRAFORM_DESTROY_TARGETS}."
+    terraform_destroy
+    return
+  fi
 
   if aws_bucket_exists; then
     export TF_VAR_terraform_shared_data_bucket_name="${EFFECTIVE_TF_STATE_BUCKET}"
@@ -455,7 +545,7 @@ run_destroy() {
   export TF_VAR_terraform_shared_data_bucket_name="${EFFECTIVE_TF_STATE_BUCKET}"
   set_shared_bucket_mode
   set_ecr_repository_mode
-  terraform -chdir="${TERRAFORM_DIR}" destroy -input=false -auto-approve
+  terraform_destroy
 }
 
 normalize_optional_envs
@@ -464,8 +554,13 @@ require_cmd aws
 require_cmd terraform
 require_non_empty "${AWS_REGION}" "AWS_REGION"
 require_non_empty "${EKS_CLUSTER_NAME}" "EKS_CLUSTER_NAME"
-require_non_empty "${TF_VAR_kubernetes_version:-}" "TF_VAR_kubernetes_version"
-set_eks_role_defaults
+
+if [[ "${TERRAFORM_ACTION}" == "apply" ]]; then
+  require_non_empty "${TF_VAR_kubernetes_version:-}" "TF_VAR_kubernetes_version"
+  set_eks_role_defaults
+elif [[ "${TERRAFORM_ACTION}" == "destroy" && -z "${TERRAFORM_DESTROY_TARGETS:-}" ]]; then
+  set_eks_role_defaults
+fi
 
 case "${TERRAFORM_ACTION}" in
   apply)
