@@ -22,7 +22,7 @@ O repositório segue uma organização inspirada em boas práticas de Terraform:
 ## Ambiente
 
 - `k8s/overlays/lab/`: composição Kubernetes do laboratório acadêmico
-- `terraform/environments/lab/`: entrypoint Terraform do laboratório acadêmico
+- `terraform/environments/lab/`: ponto de entrada Terraform do laboratório acadêmico
 - `scripts/ci-terraform.sh`: automação de `terraform apply/destroy` usada pelos workflows de infra
 
 O ambiente de laboratório pode reutilizar o secret externo `oficina-database-env` no namespace `default`, mas o deploy não falha quando ele está ausente.

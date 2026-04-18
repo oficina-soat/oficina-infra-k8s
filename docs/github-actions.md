@@ -2,10 +2,12 @@
 
 O deploy automatizado usa o workflow `./.github/workflows/deploy-lab.yml`.
 
-Para operacoes de infraestrutura sem deploy da aplicacao, use tambem:
+Para operações de infraestrutura sem deploy da aplicação, use também:
 
 - `./.github/workflows/terraform-apply-lab.yml`
 - `./.github/workflows/terraform-destroy-lab.yml`
+- `./.github/workflows/eks-deactivate-lab.yml`
+- `./.github/workflows/eks-activate-lab.yml`
 - `./.github/workflows/cleanup-orphan-eks-lab.yml`
 
 ## Gatilho
@@ -13,11 +15,21 @@ Para operacoes de infraestrutura sem deploy da aplicacao, use tambem:
 - `push` em branch protegida
 - `workflow_dispatch` para execução manual
 
-O job usa o GitHub Environment `lab`.
+Os jobs usam o GitHub Environment `lab`.
 
-O workflow tambem aceita `organization secrets/variables` e `repository secrets/variables` com os mesmos nomes. A precedencia do GitHub Actions e: `environment` > `repository` > `organization`.
+Os workflows também aceitam `organization secrets/variables` e `repository secrets/variables` com os mesmos nomes. A precedência do GitHub Actions é: `environment` > `repository` > `organization`.
 
-Todos os workflows que alteram a infraestrutura compartilham o mesmo grupo de `concurrency`, entao `apply`, `deploy`, `destroy` e `cleanup` nao executam em paralelo no mesmo ambiente.
+Todos os workflows que alteram a infraestrutura compartilham o mesmo grupo de `concurrency`, então `apply`, `deploy`, `destroy`, `deactivate/activate EKS` e `cleanup` não executam em paralelo no mesmo ambiente.
+
+## Desativar e reativar somente o EKS
+
+O EKS não possui um modo nativo de "stop". Para parar também o custo do control plane, o workflow `Deactivate EKS Lab` executa um `terraform destroy` direcionado somente ao alvo `module.eks`. Isso remove o cluster EKS, o managed node group e os access entries, mantendo VPC, subnets, ECR, bucket de state e API Gateway.
+
+O workflow `Activate EKS Lab` faz o caminho inverso: executa um `terraform apply` direcionado ao alvo `module.eks` e recria somente o módulo EKS usando as mesmas variáveis de EKS do ambiente `lab`.
+
+Esses dois workflows exigem que o state remoto já exista. Se o laboratório ainda não passou pelo bootstrap, rode primeiro `Terraform Apply Lab` ou `Deploy Lab`.
+
+Ao desativar o EKS, os objetos Kubernetes dentro do cluster são removidos junto com o cluster. Depois de reativar, rode `Deploy Lab` se precisar recriar a aplicação, Keycloak, MailHog ou outros manifestos Kubernetes.
 
 ## Autenticação AWS
 
@@ -29,19 +41,19 @@ O caminho mais simples para este laboratório é usar credenciais temporárias d
 
 Como o laboratório recria essas credenciais a cada sessão, esses secrets precisam ser atualizados sempre que o laboratório for reiniciado.
 
-## Variables do Environment
+## Variáveis do Environment
 
 - `AWS_REGION`
 - `EKS_CLUSTER_NAME`
 - `KUBERNETES_VERSION`
 
-Se `KUBERNETES_VERSION` nao for informado em `vars`, o workflow usa o default `1.35`.
+Se `KUBERNETES_VERSION` não for informado em `vars`, o workflow usa o padrão `1.35`.
 
 Variáveis opcionais:
 
-- `DEPLOY_APP`: controla o deploy da aplicação no cluster. Default do workflow `Deploy Lab`: `false`
-- `IMAGE_REF`: referencia completa da imagem. Se informado, tem prioridade sobre `IMAGE_TAG`
-- `IMAGE_TAG`: tag da imagem. Quando `DEPLOY_APP=true` e `IMAGE_REF` nao for informado, o workflow monta `${ecr_repository_url}:${IMAGE_TAG}` automaticamente a partir do output do Terraform capturado no mesmo `apply`. Default: `latest`
+- `DEPLOY_APP`: controla o deploy da aplicação no cluster. Padrão do workflow `Deploy Lab`: `false`
+- `IMAGE_REF`: referência completa da imagem. Se informado, tem prioridade sobre `IMAGE_TAG`
+- `IMAGE_TAG`: tag da imagem. Quando `DEPLOY_APP=true` e `IMAGE_REF` não for informado, o workflow monta `${ecr_repository_url}:${IMAGE_TAG}` automaticamente a partir do output do Terraform capturado no mesmo `apply`. Padrão: `latest`
 - `EKS_ACCESS_PRINCIPAL_ARN`
 - `EKS_CLUSTER_ROLE_ARN`
 - `EKS_NODE_ROLE_ARN`
@@ -88,12 +100,12 @@ Se `K8S_DATABASE_ENV_FILE` não for informado, o workflow não cria esse secret.
 
 Se `TF_STATE_BUCKET` for informado, o workflow habilita backend remoto S3 com `TF_STATE_KEY`, `TF_STATE_REGION` e, opcionalmente, `TF_STATE_DYNAMODB_TABLE`.
 
-Se o bucket ainda nao existir, o script faz bootstrap com state local, cria o bucket via Terraform, migra o state para o backend S3 e continua o deploy.
+Se o bucket ainda não existir, o script faz bootstrap com state local, cria o bucket via Terraform, migra o state para o backend S3 e continua o deploy.
 
-Se o bucket ja existir, o script o reutiliza normalmente. Quando o bucket ja faz parte do state desse ambiente, ele continua sendo gerenciado pelo Terraform; quando for um bucket externo preexistente, o workflow apenas o usa como backend sem tentar recria-lo.
+Se o bucket já existir, o script o reutiliza normalmente. Quando o bucket já faz parte do state desse ambiente, ele continua sendo gerenciado pelo Terraform; quando for um bucket externo preexistente, o workflow apenas o usa como backend sem tentar recriá-lo.
 
-Se `TF_STATE_BUCKET` nao for informado, o workflow deriva automaticamente o nome do bucket compartilhado a partir do cluster e da conta AWS, usa state local apenas durante o bootstrap e migra em seguida para backend remoto S3. Em outras palavras: a ausencia de `TF_STATE_BUCKET` nao desabilita o backend remoto; ela apenas faz o workflow calcular o nome do bucket automaticamente.
+Se `TF_STATE_BUCKET` não for informado, o workflow deriva automaticamente o nome do bucket compartilhado a partir do cluster e da conta AWS, usa state local apenas durante o bootstrap e migra em seguida para backend remoto S3. Em outras palavras: a ausência de `TF_STATE_BUCKET` não desabilita o backend remoto; ela apenas faz o workflow calcular o nome do bucket automaticamente.
 
-No workflow manual de `destroy`, se o bucket S3 de backend fizer parte do state desse ambiente, o script migra o state para backend local antes de destruir a infraestrutura. Isso evita o bloqueio classico de tentar apagar o proprio bucket usado pelo backend remoto.
+No workflow manual de `destroy`, se o bucket S3 de backend fizer parte do state desse ambiente, o script migra o state para backend local antes de destruir a infraestrutura. Isso evita o bloqueio clássico de tentar apagar o próprio bucket usado pelo backend remoto.
 
-Se um `apply` falhar depois de criar recursos AWS, mas antes de persistir o state remoto, use o workflow manual `Cleanup Orphan Lab Infra`. Ele remove o cluster EKS orfao, a VPC/subnets/route tables/internet gateway/security groups associados ao laboratorio e tambem o API Gateway do lab, incluindo `VPC Link` e o log group `/aws/apigateway/<API_GATEWAY_NAME>`, permitindo um novo bootstrap limpo.
+Se um `apply` falhar depois de criar recursos AWS, mas antes de persistir o state remoto, use o workflow manual `Cleanup Orphan Lab Infra`. Ele remove o cluster EKS órfão, a VPC/subnets/route tables/internet gateway/security groups associados ao laboratório e também o API Gateway do lab, incluindo `VPC Link` e o log group `/aws/apigateway/<API_GATEWAY_NAME>`, permitindo um novo bootstrap limpo.

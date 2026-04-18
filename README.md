@@ -10,7 +10,7 @@ O projeto provisiona a base da nuvem e publica a aplicação com:
 - API Gateway HTTP API com logs e throttling, pronto para expor app HTTP e Lambdas de forma opcional
 - manifests Kubernetes organizados com `kustomize` em `base`, `components`, `addons` e `overlays`
 - workflow de GitHub Actions para aplicar Terraform e fazer deploy no cluster após merge em branch protegida
-- workflows manuais de GitHub Actions para `terraform apply` e `terraform destroy` sem depender de novo deploy da aplicação
+- workflows manuais de GitHub Actions para `terraform apply`, `terraform destroy` e ativação/desativação do EKS sem depender de novo deploy da aplicação
 
 ## O que este projeto não cria
 
@@ -43,7 +43,7 @@ O repositório segue um layout em diretórios:
 
 ## Estado do Terraform
 
-O ambiente `lab` cria por default um bucket S3 dedicado aos dados compartilhados do Terraform. Mesmo assim, o bootstrap precisa começar com state local:
+O ambiente `lab` cria por padrão um bucket S3 dedicado aos dados compartilhados do Terraform. Mesmo assim, o bootstrap manual precisa começar com state local:
 
 ```bash
 terraform -chdir=terraform/environments/lab init
@@ -89,14 +89,14 @@ Variáveis principais:
 
 - `region`: região AWS do laboratório
 - `cluster_name`: nome do cluster EKS
-- `kubernetes_version`: versão do Kubernetes. Default do projeto: `1.35`
-- `eks_cluster_role_arn` e `eks_node_role_arn`: roles pré-existentes do laboratório para o control plane e os nodes; por default o ambiente `lab` usa as roles padrão do laboratório
-- `eks_access_principal_arn`: principal que receberá acesso administrativo ao cluster; por default o ambiente `lab` usa `arn:aws:iam::998977374439:role/voclabs`
+- `kubernetes_version`: versão do Kubernetes. Padrão do projeto: `1.35`
+- `eks_cluster_role_arn` e `eks_node_role_arn`: roles preexistentes do laboratório para o control plane e os nodes; por padrão o ambiente `lab` usa as roles do laboratório
+- `eks_access_principal_arn`: principal que receberá acesso administrativo ao cluster; se omitido, o Terraform tenta usar a identidade atual
 - `instance_type`, `desired_size`, `min_size` e `max_size`: dimensionamento do managed node group
 - `public_subnet_cidrs` e `azs`: rede mínima do laboratório
 - `cluster_endpoint_public_access_cidrs`: CIDRs permitidos no endpoint público do EKS
 - `ecr_repository_name` e `create_ecr_repository`: repositório ECR da aplicação
-- `create_api_gateway`: cria o HTTP API do laboratório. Default `true`
+- `create_api_gateway`: cria o HTTP API do laboratório. Padrão: `true`
 - `api_gateway_http_routes`: rotas `HTTP_PROXY` para expor a aplicação principal ou outros backends HTTP
 - `api_gateway_lambda_routes`: rotas `AWS_PROXY` para expor Lambdas existentes
 - `api_gateway_vpc_link_subnet_ids`, `api_gateway_vpc_link_security_group_ids` e `api_gateway_create_vpc_link_security_group`: usados apenas quando uma rota HTTP precisar de integração privada via `VPC_LINK`
@@ -124,9 +124,9 @@ Saídas principais:
 
 ## API Gateway
 
-O ambiente `lab` agora cria um `API Gateway HTTP API` por default porque ele oferece o melhor equilíbrio para laboratório acadêmico: custo por requisição, menor complexidade operacional que o `REST API` e suporte tanto a backends HTTP quanto a Lambda.
+O ambiente `lab` cria um `API Gateway HTTP API` por padrão porque ele oferece o melhor equilíbrio para laboratório acadêmico: custo por requisição, menor complexidade operacional que o `REST API` e suporte tanto a backends HTTP quanto a Lambda.
 
-O gateway não exige que a aplicação principal nem os Lambdas existam no momento do `apply`. Se `api_gateway_http_routes` e `api_gateway_lambda_routes` ficarem vazios, ele é criado apenas como front door pronta para uso posterior.
+O gateway não exige que a aplicação principal nem os Lambdas existam no momento do `apply`. Se `api_gateway_http_routes` e `api_gateway_lambda_routes` ficarem vazios, ele é criado apenas como porta de entrada pronta para uso posterior.
 
 Para a aplicação principal, há dois padrões suportados:
 
@@ -155,7 +155,7 @@ api_gateway_lambda_routes = {
 }
 ```
 
-Se a aplicação principal for publicada por ALB privado, troque a rota HTTP para:
+Se a aplicação principal for publicada por ALB privado, troque a rota HTTP por:
 
 ```hcl
 api_gateway_http_routes = {
@@ -208,14 +208,17 @@ Para acesso local:
 
 O workflow [`.github/workflows/deploy-lab.yml`](.github/workflows/deploy-lab.yml) executa em todo `push`, mas só faz deploy quando a ref de destino é uma branch protegida. Na prática, isso cobre o merge do PR para a branch protegida.
 
-Além dele, o repositório expõe dois workflows manuais:
+Além dele, o repositório expõe workflows manuais para operações de infraestrutura:
 
 - [`.github/workflows/terraform-apply-lab.yml`](.github/workflows/terraform-apply-lab.yml): executa apenas o `terraform apply`
 - [`.github/workflows/terraform-destroy-lab.yml`](.github/workflows/terraform-destroy-lab.yml): executa apenas o `terraform destroy`, com confirmação explícita
+- [`.github/workflows/eks-deactivate-lab.yml`](.github/workflows/eks-deactivate-lab.yml): remove somente o módulo EKS para reduzir custo quando o laboratório estiver parado
+- [`.github/workflows/eks-activate-lab.yml`](.github/workflows/eks-activate-lab.yml): recria somente o módulo EKS
+- [`.github/workflows/cleanup-orphan-eks-lab.yml`](.github/workflows/cleanup-orphan-eks-lab.yml): remove recursos órfãos quando uma execução falha antes de persistir o state remoto
 
-O job usa o GitHub Environment `lab` para centralizar `vars` e `secrets`.
+Os jobs usam o GitHub Environment `lab` para centralizar `vars` e `secrets`.
 
-O workflow tambem aceita `organization secrets/variables` e `repository secrets/variables` com os mesmos nomes. O GitHub resolve isso por precedencia: `environment` sobrescreve `repository`, que sobrescreve `organization`.
+Os workflows também aceitam `organization secrets/variables` e `repository secrets/variables` com os mesmos nomes. O GitHub resolve isso por precedência: `environment` sobrescreve `repository`, que sobrescreve `organization`.
 
 O acesso à AWS é feito com credenciais clássicas do AWS CLI via `aws-actions/configure-aws-credentials`, porque esse é o caminho mais simples para o laboratório atual.
 
@@ -228,13 +231,13 @@ Valores esperados no Environment:
 - `AWS_SECRET_ACCESS_KEY`: credencial AWS em `secrets`
 - `AWS_SESSION_TOKEN`: opcional, mas necessário quando o laboratório entregar credenciais temporárias
 
-Se `KUBERNETES_VERSION` nao for informado em `vars`, o workflow usa o default `1.35`.
+Se `KUBERNETES_VERSION` não for informado em `vars`, o workflow usa o padrão `1.35`.
 
 Valores opcionais no Environment:
 
-- `DEPLOY_APP`: controla o deploy da aplicação no cluster. Default do workflow `Deploy Lab`: `false`
-- `IMAGE_REF`: referencia completa da imagem. Se informado, tem prioridade sobre `IMAGE_TAG`
-- `IMAGE_TAG`: tag da imagem. Quando `DEPLOY_APP=true` e `IMAGE_REF` nao for informado, o workflow monta `${ecr_repository_url}:${IMAGE_TAG}` automaticamente a partir do output do Terraform capturado no mesmo `apply`. Default: `latest`
+- `DEPLOY_APP`: controla o deploy da aplicação no cluster. Padrão do workflow `Deploy Lab`: `false`
+- `IMAGE_REF`: referência completa da imagem. Se informado, tem prioridade sobre `IMAGE_TAG`
+- `IMAGE_TAG`: tag da imagem. Quando `DEPLOY_APP=true` e `IMAGE_REF` não for informado, o workflow monta `${ecr_repository_url}:${IMAGE_TAG}` automaticamente a partir do output do Terraform capturado no mesmo `apply`. Padrão: `latest`
 - `EKS_ACCESS_PRINCIPAL_ARN`
 - `EKS_CLUSTER_ROLE_ARN`
 - `EKS_NODE_ROLE_ARN`
@@ -274,9 +277,11 @@ Valores opcionais no Environment:
 
 Se o laboratório recriar as credenciais a cada nova sessão, atualize os `secrets` `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` e, quando houver, `AWS_SESSION_TOKEN` antes do merge que vai disparar o deploy.
 
-Se `TF_STATE_BUCKET` apontar para um bucket que ainda nao existe, o script de CI faz o bootstrap automaticamente com state local, cria o bucket, migra o state para o backend S3 e segue a execucao.
+Se `TF_STATE_BUCKET` apontar para um bucket que ainda não existe, o script de CI faz o bootstrap automaticamente com state local, cria o bucket, migra o state para o backend S3 e segue a execução.
 
-Se `TF_STATE_BUCKET` apontar para um bucket que ja existe, o workflow reutiliza esse bucket normalmente. Quando o bucket ja estiver no state desse ambiente, ele continua gerenciado pelo Terraform; quando for um bucket externo preexistente, o workflow apenas o utiliza como backend remoto sem tentar recria-lo.
+Se `TF_STATE_BUCKET` apontar para um bucket que já existe, o workflow reutiliza esse bucket normalmente. Quando o bucket já estiver no state desse ambiente, ele continua gerenciado pelo Terraform; quando for um bucket externo preexistente, o workflow apenas o utiliza como backend remoto sem tentar recriá-lo.
+
+Se `TF_STATE_BUCKET` não for informado, o script deriva automaticamente o nome do bucket compartilhado a partir do cluster, da conta AWS e da região. Se necessário, ele faz bootstrap com state local e migra o state para esse backend remoto S3.
 
 O workflow:
 
@@ -286,15 +291,17 @@ O workflow:
 - executa o deploy da aplicação no cluster apenas quando `DEPLOY_APP=true`
 - monta `IMAGE_REF` automaticamente com o output `ecr_repository_url` apenas quando `DEPLOY_APP=true` e apenas `IMAGE_TAG` for informado
 
-O API Gateway continua sendo aplicado mesmo quando `DEPLOY_APP=false`, o que permite preparar a front door antes da publicação da aplicação principal ou dos Lambdas.
+O API Gateway continua sendo aplicado mesmo quando `DEPLOY_APP=false`, o que permite preparar a porta de entrada antes da publicação da aplicação principal ou dos Lambdas.
 
-Sem `TF_STATE_BUCKET`, o workflow usa state local temporário no runner. Isso só serve para execuções efemeras, porque não preserva o state entre execuções.
+Os workflows pontuais `Deactivate EKS Lab` e `Activate EKS Lab` exigem state remoto existente. Rode `Terraform Apply Lab` ou `Deploy Lab` pelo menos uma vez antes de usá-los.
 
-## Operacoes manuais de Terraform
+## Operações manuais de Terraform
 
-Use o workflow `Terraform Apply Lab` quando quiser reprovisionar apenas a infraestrutura, sem redeploy da aplicacao.
+Use o workflow `Terraform Apply Lab` quando quiser reprovisionar apenas a infraestrutura, sem redeploy da aplicação.
 
-Use o workflow `Terraform Destroy Lab` quando quiser remover a infraestrutura manualmente. Esse workflow exige o valor `DESTROY` no campo de confirmação. Se o bucket S3 de backend fizer parte do state desse ambiente, o workflow migra o state para backend local antes do `destroy`, para conseguir apagar o bucket tambem.
+Use o workflow `Terraform Destroy Lab` quando quiser remover a infraestrutura manualmente. Esse workflow exige o valor `DESTROY` no campo de confirmação. Se o bucket S3 de backend fizer parte do state desse ambiente, o workflow migra o state para backend local antes do `destroy`, para conseguir apagar o bucket também.
+
+Use o workflow `Deactivate EKS Lab` quando quiser remover somente o EKS durante períodos de inatividade. Ele executa um `terraform destroy` direcionado ao alvo `module.eks`, preservando VPC, ECR, API Gateway e bucket de state. Use `Activate EKS Lab` para recriar somente esse módulo.
 
 Use o workflow `Cleanup Orphan Lab Infra` quando houver recursos criados na AWS sem state remoto recuperável. Ele remove o cluster EKS órfão, a rede associada e também o API Gateway do laboratório, incluindo `VPC Link` e `CloudWatch Log Group`, usando `EKS_CLUSTER_NAME` e `API_GATEWAY_NAME` para localizar os recursos.
 
@@ -309,18 +316,18 @@ bash -n scripts/*.sh
 
 ## Perfil de custo
 
-Defaults pensados para laboratório acadêmico:
+Padrões pensados para laboratório acadêmico:
 
 - duas sub-redes públicas
 - sem NAT Gateway
 - managed node group mínimo
-- `t3.medium` por default
+- `t3.medium` por padrão
 - repositório ECR opcional
-- API Gateway HTTP API com logs e throttling default
+- API Gateway HTTP API com logs e throttling padrão
 - MailHog dentro do cluster
 - Keycloak apenas como addon opcional de demonstração
 
-Esses defaults preservam:
+Esses padrões preservam:
 
 - separação entre infraestrutura da aplicação e infraestrutura do banco
 - deploy reproduzível via Terraform e `kustomize`
