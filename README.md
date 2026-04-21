@@ -241,6 +241,8 @@ O repositório mantém dois workflows para o ambiente de laboratório:
 
 O workflow `Deploy Lab` executa em todo `push`, mas só faz deploy quando a ref de destino é uma branch protegida. Na prática, isso cobre o merge do PR para a branch protegida. Ele também pode ser executado manualmente por `workflow_dispatch`.
 
+Em pushes para `develop`, depois que o job `validate` passa, o workflow abre automaticamente um pull request para `main` quando ainda não existir um PR aberto e houver commits novos.
+
 Os jobs usam o GitHub Environment `lab` para centralizar `vars` e `secrets`.
 
 Os workflows também aceitam `organization secrets/variables` e `repository secrets/variables` com os mesmos nomes. O GitHub resolve isso por precedência: `environment` sobrescreve `repository`, que sobrescreve `organization`.
@@ -307,6 +309,7 @@ O workflow:
 - valida formatação Terraform, inicialização/validação Terraform sem backend e sintaxe dos scripts shell
 - inicializa e aplica o Terraform em `terraform/environments/lab`
 - faz bootstrap do backend S3 quando necessário e migra o state para o backend remoto
+- em pushes para `develop`, abre automaticamente um pull request para `main` depois que as validações passam
 
 ## Operações manuais de Terraform
 

@@ -22,6 +22,8 @@ O job de validacao executa:
 
 O job de deploy roda depois da validacao, usa o GitHub Environment `lab`, configura as credenciais AWS e executa `bash ./scripts/ci-terraform.sh`. Esse script faz bootstrap do backend S3 quando necessario, migra o state para o backend remoto e executa `terraform apply` no ambiente `lab`.
 
+Em pushes para `develop`, o workflow tambem abre automaticamente um pull request para `main` depois que o job de validacao passa. Antes de criar um novo PR, ele verifica se `develop` tem commits novos em relacao a `main` e se ja existe um PR aberto de `develop` para `main`.
+
 ## Deactivate EKS Lab
 
 O workflow `Deactivate EKS Lab` desativa somente o EKS. Ele exige confirmacao manual com o valor `DEACTIVATE` e executa `bash ./scripts/ci-terraform.sh` com:

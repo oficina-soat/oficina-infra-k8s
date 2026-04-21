@@ -111,3 +111,52 @@ jobs:
       - name: Deploy lab infrastructure
         shell: bash
         run: bash ./scripts/ci-terraform.sh
+
+  open-pull-request-to-main:
+    needs: validate
+    if: github.event_name == 'push' && github.ref_name == 'develop'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Open pull request to main
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_BRANCH: ${{ github.ref_name }}
+          BASE_BRANCH: main
+        run: |
+          git fetch origin "${BASE_BRANCH}" "${HEAD_BRANCH}"
+
+          commits_ahead="$(
+            git rev-list --count "origin/${BASE_BRANCH}..origin/${HEAD_BRANCH}"
+          )"
+
+          if [[ "${commits_ahead}" == "0" ]]; then
+            echo "Branch ${HEAD_BRANCH} nao possui commits novos em relacao a ${BASE_BRANCH}; PR nao sera criado."
+            exit 0
+          fi
+
+          existing_pr_url="$(
+            gh pr list \
+              --base "${BASE_BRANCH}" \
+              --head "${HEAD_BRANCH}" \
+              --state open \
+              --json url \
+              --jq '.[0].url // empty'
+          )"
+
+          if [[ -n "${existing_pr_url}" ]]; then
+            echo "Pull request ja existente: ${existing_pr_url}"
+            exit 0
+          fi
+
+          gh pr create \
+            --base "${BASE_BRANCH}" \
+            --head "${HEAD_BRANCH}" \
+            --title "chore: promover develop para main" \
+            --body "PR aberto automaticamente apos as validacoes do workflow Deploy Lab passarem."
