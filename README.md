@@ -234,21 +234,18 @@ Para acesso local:
 
 ## Deploy com GitHub Actions
 
-O workflow [`.github/workflows/deploy-lab.yml`](.github/workflows/deploy-lab.yml) executa em todo `push`, mas só faz deploy quando a ref de destino é uma branch protegida. Na prática, isso cobre o merge do PR para a branch protegida.
+O repositório mantém dois workflows para o ambiente de laboratório:
 
-Além dele, o repositório expõe workflows manuais para operações de infraestrutura:
-
-- [`.github/workflows/terraform-apply-lab.yml`](.github/workflows/terraform-apply-lab.yml): executa apenas o `terraform apply`
-- [`.github/workflows/terraform-destroy-lab.yml`](.github/workflows/terraform-destroy-lab.yml): executa apenas o `terraform destroy`, com confirmação explícita
+- [`.github/workflows/deploy-lab.yml`](.github/workflows/deploy-lab.yml): valida e aplica toda a infraestrutura Terraform declarada em `terraform/environments/lab`
 - [`.github/workflows/eks-deactivate-lab.yml`](.github/workflows/eks-deactivate-lab.yml): remove somente o módulo EKS para reduzir custo quando o laboratório estiver parado
-- [`.github/workflows/eks-activate-lab.yml`](.github/workflows/eks-activate-lab.yml): recria somente o módulo EKS
-- [`.github/workflows/cleanup-orphan-eks-lab.yml`](.github/workflows/cleanup-orphan-eks-lab.yml): remove recursos órfãos quando uma execução falha antes de persistir o state remoto
+
+O workflow `Deploy Lab` executa em todo `push`, mas só faz deploy quando a ref de destino é uma branch protegida. Na prática, isso cobre o merge do PR para a branch protegida. Ele também pode ser executado manualmente por `workflow_dispatch`.
 
 Os jobs usam o GitHub Environment `lab` para centralizar `vars` e `secrets`.
 
 Os workflows também aceitam `organization secrets/variables` e `repository secrets/variables` com os mesmos nomes. O GitHub resolve isso por precedência: `environment` sobrescreve `repository`, que sobrescreve `organization`.
 
-O acesso à AWS é feito com credenciais clássicas do AWS CLI via `aws-actions/configure-aws-credentials`, porque esse é o caminho mais simples para o laboratório atual.
+O acesso à AWS é feito com credenciais clássicas do AWS CLI expostas como variáveis de ambiente do job, porque esse é o caminho mais simples para o laboratório atual.
 
 Valores esperados no Environment:
 
@@ -263,9 +260,6 @@ Se `KUBERNETES_VERSION` não for informado em `vars`, o workflow usa o padrão `
 
 Valores opcionais no Environment:
 
-- `DEPLOY_APP`: controla o deploy da aplicação no cluster. Use `auto`, `true` ou `false`. Padrão do workflow `Deploy Lab`: `auto`
-- `IMAGE_REF`: referência completa da imagem. Se informado, tem prioridade sobre `IMAGE_TAG`
-- `IMAGE_TAG`: tag da imagem. Quando `DEPLOY_APP=true` ou `DEPLOY_APP=auto` e `IMAGE_REF` não for informado, o workflow monta `${ecr_repository_url}:${IMAGE_TAG}` automaticamente a partir do output do Terraform capturado no mesmo `apply`. Se `IMAGE_TAG` não for informado, o workflow usa a imagem tagueada mais recente do ECR
 - `EKS_ACCESS_PRINCIPAL_ARN`
 - `EKS_CLUSTER_ROLE_ARN`
 - `EKS_NODE_ROLE_ARN`
@@ -299,12 +293,6 @@ Valores opcionais no Environment:
 - `TF_STATE_KEY`
 - `TF_STATE_REGION`
 - `TF_STATE_DYNAMODB_TABLE`
-- `DEPLOY_KEYCLOAK`
-- `REGENERATE_JWT`
-- `FETCH_RUNTIME_SECRETS_FROM_AWS`: controla a busca automática de secrets de runtime no AWS Secrets Manager. Padrão: `true`
-- `K8S_DATABASE_SECRET_ID`: secret do Secrets Manager usado para recriar `oficina-database-env` quando `K8S_DATABASE_ENV_FILE` não for informado. Padrão: `oficina/lab/database/app`
-- `K8S_JWT_SECRET_ID`: secret do Secrets Manager usado para recriar `oficina-jwt-keys` quando existir. Padrão: `oficina/lab/jwt`
-- `K8S_DATABASE_ENV_FILE`: em `secrets`, com o conteúdo completo do `.env` usado para criar ou atualizar opcionalmente o secret `oficina-database-env`
 
 Se o laboratório recriar as credenciais a cada nova sessão, atualize os `secrets` `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` e, quando houver, `AWS_SESSION_TOKEN` antes do merge que vai disparar o deploy.
 
@@ -316,36 +304,23 @@ Se `TF_STATE_BUCKET` não for informado, o script deriva automaticamente o nome 
 
 O workflow:
 
-- valida formatação Terraform, inicialização/validação Terraform sem backend, renderização do overlay Kubernetes e sintaxe dos scripts shell
+- valida formatação Terraform, inicialização/validação Terraform sem backend e sintaxe dos scripts shell
 - inicializa e aplica o Terraform em `terraform/environments/lab`
-- atualiza o kubeconfig do cluster EKS
-- quando `DEPLOY_APP=auto`, procura uma imagem pronta no ECR e só executa o deploy da aplicação se encontrar uma tag
-- cria ou atualiza o secret `oficina-database-env` a partir de `K8S_DATABASE_ENV_FILE` ou do Secrets Manager, quando disponível
-- recria `oficina-jwt-keys` a partir do Secrets Manager, quando disponível; se não existir, gera um novo par de chaves para o cluster
-- monta `IMAGE_REF` automaticamente com o output `ecr_repository_url` e a tag informada ou, na ausência dela, com a tag mais recente do ECR
-- aplica o overlay Kubernetes e valida o rollout de `mailhog` e `oficina-app`, além dos endpoints do `service/oficina-app`
-- em pushes para `develop`, abre automaticamente um pull request para `main` depois que as validações passam, desde que existam commits novos; se já existir PR aberto de `develop` para `main`, reutiliza o existente
-
-O API Gateway continua sendo aplicado mesmo quando `DEPLOY_APP=false` ou quando `DEPLOY_APP=auto` não encontra imagem no ECR, o que permite preparar a porta de entrada antes da publicação da aplicação principal ou dos Lambdas.
-
-Os workflows pontuais `Deactivate EKS Lab` e `Activate EKS Lab` exigem state remoto existente. Rode `Terraform Apply Lab` ou `Deploy Lab` pelo menos uma vez antes de usá-los.
+- faz bootstrap do backend S3 quando necessário e migra o state para o backend remoto
 
 ## Operações manuais de Terraform
 
-Use o workflow `Terraform Apply Lab` quando quiser reprovisionar apenas a infraestrutura, sem redeploy da aplicação.
+Use o workflow `Deploy Lab` quando quiser convergir a infraestrutura declarada neste repositório.
 
-Use o workflow `Terraform Destroy Lab` quando quiser remover a infraestrutura manualmente. Esse workflow exige o valor `DESTROY` no campo de confirmação. Se o bucket S3 de backend fizer parte do state desse ambiente, o workflow migra o state para backend local antes do `destroy`, para conseguir apagar o bucket também.
+Use o workflow `Deactivate EKS Lab` quando quiser remover somente o EKS durante períodos de inatividade. Ele exige o valor `DEACTIVATE` no campo de confirmação e executa um `terraform destroy` direcionado ao alvo `module.eks`, preservando VPC, ECR, API Gateway e bucket de state.
 
-Use o workflow `Deactivate EKS Lab` quando quiser remover somente o EKS durante períodos de inatividade. Ele executa um `terraform destroy` direcionado ao alvo `module.eks`, preservando VPC, ECR, API Gateway e bucket de state. Use `Activate EKS Lab` para recriar somente esse módulo.
-
-Use o workflow `Cleanup Orphan Lab Infra` quando houver recursos criados na AWS sem state remoto recuperável. Ele remove o cluster EKS órfão, a rede associada e também o API Gateway do laboratório, incluindo `VPC Link` e `CloudWatch Log Group`, usando `EKS_CLUSTER_NAME` e `API_GATEWAY_NAME` para localizar os recursos.
+O workflow `Deactivate EKS Lab` exige state remoto existente. Rode `Deploy Lab` pelo menos uma vez antes de usá-lo.
 
 ## Validações recomendadas
 
 ```bash
 terraform fmt -check -recursive terraform
 terraform -chdir=terraform/environments/lab validate
-kubectl kustomize k8s/overlays/lab
 bash -n scripts/*.sh
 ```
 
