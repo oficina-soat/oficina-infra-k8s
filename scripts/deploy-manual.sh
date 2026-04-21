@@ -172,6 +172,9 @@ if [[ "${DEPLOY_APP}" == "true" ]]; then
   log "Aplicando ambiente de laboratorio da aplicacao"
   render_overlay | kubectl apply -f -
 
+  log "Reiniciando deployment oficina-app para aplicar secrets/configmaps atualizados"
+  kubectl rollout restart deployment/oficina-app --namespace "${APP_NAMESPACE}"
+
   kubectl rollout status deployment/mailhog --namespace "${APP_NAMESPACE}" --timeout=180s
 
   if ! kubectl rollout status deployment/oficina-app --namespace "${APP_NAMESPACE}" --timeout=300s; then

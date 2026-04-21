@@ -154,6 +154,159 @@ ensure_env_line() {
   fi
 }
 
+env_file_value() {
+  local file="$1"
+  local key="$2"
+  local line=""
+  local value=""
+
+  line="$(awk -v key="${key}" 'index($0, key "=") == 1 { line = $0 } END { if (line != "") print line }' "${file}")"
+  if [[ -z "${line}" ]]; then
+    return 1
+  fi
+
+  value="${line#*=}"
+  if [[ -z "${value}" ]]; then
+    return 1
+  fi
+
+  printf '%s' "${value}"
+}
+
+first_env_file_value() {
+  local file="$1"
+  shift
+
+  local key=""
+  local value=""
+
+  for key in "$@"; do
+    if value="$(env_file_value "${file}" "${key}")"; then
+      printf '%s' "${value}"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+set_env_line() {
+  local file="$1"
+  local key="$2"
+  local value="$3"
+  local tmp_file=""
+
+  tmp_file="$(mktemp)"
+  awk -v key="${key}" -v value="${value}" '
+    BEGIN { written = 0 }
+    index($0, key "=") == 1 {
+      if (!written) {
+        print key "=" value
+        written = 1
+      }
+      next
+    }
+    { print }
+    END {
+      if (!written) {
+        print key "=" value
+      }
+    }
+  ' "${file}" > "${tmp_file}"
+  mv "${tmp_file}" "${file}"
+}
+
+normalize_postgres_url() {
+  local url="$1"
+
+  url="${url#jdbc:}"
+
+  if [[ "${url}" == postgres://* ]]; then
+    url="postgresql://${url#postgres://}"
+  fi
+
+  printf '%s' "${url}"
+}
+
+ensure_database_quarkus_envs() {
+  local file="$1"
+  local value=""
+  local host=""
+  local port=""
+  local database=""
+
+  if value="$(first_env_file_value \
+    "${file}" \
+    "QUARKUS_DATASOURCE_REACTIVE_URL" \
+    "quarkus.datasource.reactive.url" \
+    "QUARKUS_DATASOURCE_JDBC_URL" \
+    "quarkus.datasource.jdbc.url" \
+    "DATABASE_URL" \
+    "DATABASE_URI" \
+    "DB_URL" \
+    "DB_URI" \
+    "JDBC_DATABASE_URL" \
+    "JDBC_URL" \
+    "POSTGRESQL_URL" \
+    "POSTGRESQL_URI" \
+    "POSTGRES_URL" \
+    "POSTGRES_URI" \
+    "SPRING_DATASOURCE_URL" \
+    "url" \
+    "jdbcUrl" \
+    "jdbc_url")"; then
+    set_env_line "${file}" "QUARKUS_DATASOURCE_REACTIVE_URL" "$(normalize_postgres_url "${value}")"
+  fi
+
+  if value="$(first_env_file_value \
+    "${file}" \
+    "QUARKUS_DATASOURCE_USERNAME" \
+    "quarkus.datasource.username" \
+    "DATABASE_USERNAME" \
+    "DATABASE_USER" \
+    "DB_USERNAME" \
+    "DB_USER" \
+    "DB_USER_NAME" \
+    "POSTGRES_USERNAME" \
+    "POSTGRES_USER" \
+    "PGUSER" \
+    "db_username" \
+    "dbUser" \
+    "username" \
+    "user")"; then
+    set_env_line "${file}" "QUARKUS_DATASOURCE_USERNAME" "${value}"
+  fi
+
+  if value="$(first_env_file_value \
+    "${file}" \
+    "QUARKUS_DATASOURCE_PASSWORD" \
+    "quarkus.datasource.password" \
+    "DATABASE_PASSWORD" \
+    "DB_PASSWORD" \
+    "POSTGRES_PASSWORD" \
+    "PGPASSWORD" \
+    "db_password" \
+    "dbPassword" \
+    "password")"; then
+    set_env_line "${file}" "QUARKUS_DATASOURCE_PASSWORD" "${value}"
+  fi
+
+  if ! env_file_value "${file}" "QUARKUS_DATASOURCE_REACTIVE_URL" >/dev/null; then
+    if host="$(first_env_file_value "${file}" "DATABASE_HOST" "DB_HOST" "POSTGRES_HOST" "PGHOST" "host" "hostname" "endpoint")" \
+      && database="$(first_env_file_value "${file}" "DATABASE_NAME" "DB_NAME" "POSTGRES_DB" "PGDATABASE" "dbname" "database" "databaseName" "db_name" "database_name")"; then
+      port="$(first_env_file_value "${file}" "DATABASE_PORT" "DB_PORT" "POSTGRES_PORT" "PGPORT" "port" || true)"
+      port="${port:-5432}"
+      set_env_line "${file}" "QUARKUS_DATASOURCE_REACTIVE_URL" "postgresql://${host}:${port}/${database}"
+    fi
+  fi
+
+  if ! env_file_value "${file}" "QUARKUS_DATASOURCE_REACTIVE_URL" >/dev/null; then
+    echo "Secret de banco nao contem QUARKUS_DATASOURCE_REACTIVE_URL nem dados suficientes para monta-la." >&2
+    echo "Informe QUARKUS_DATASOURCE_REACTIVE_URL ou os campos host/port/dbname, username e password em ${K8S_DATABASE_SECRET_ID} ou K8S_DATABASE_ENV_FILE." >&2
+    exit 1
+  fi
+}
+
 ensure_database_ssl_envs() {
   local file="$1"
 
@@ -164,6 +317,7 @@ ensure_database_ssl_envs() {
 apply_database_secret_from_file() {
   local env_file="$1"
 
+  ensure_database_quarkus_envs "${env_file}"
   ensure_database_ssl_envs "${env_file}"
 
   kubectl create secret generic oficina-database-env \
