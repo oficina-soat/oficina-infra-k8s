@@ -101,6 +101,9 @@ Variáveis principais:
 - `api_gateway_http_routes`: rotas `HTTP_PROXY` para expor a aplicação principal ou outros backends HTTP
 - `api_gateway_lambda_routes`: rotas `AWS_PROXY` para expor Lambdas existentes
 - `api_gateway_vpc_link_subnet_ids`, `api_gateway_vpc_link_security_group_ids` e `api_gateway_create_vpc_link_security_group`: usados apenas quando uma rota HTTP precisar de integração privada via `VPC_LINK`
+- `expose_oficina_app_api_gateway`: publica o `oficina-app` na raiz do HTTP API usando `VPC_LINK`, NLB interno e o `NodePort` do Service Kubernetes. Padrão: `true`
+- `oficina_app_node_port`: `NodePort` fixo usado como target do NLB interno. Padrão: `30080`, alinhado ao manifesto em `k8s/base/oficina-app`
+- `oficina_app_private_listener_port`: porta privada do listener do NLB interno usado pelo API Gateway. Padrão: `8080`
 - `create_terraform_shared_data_bucket`, `terraform_shared_data_bucket_name` e `terraform_shared_data_bucket_force_destroy`: bucket S3 usado pelos dados compartilhados do Terraform
 
 ## Aplicação da infraestrutura
@@ -119,6 +122,10 @@ Saídas principais:
 - `ecr_repository_url`
 - `api_gateway_endpoint`
 - `api_gateway_invoke_url`
+- `oficina_app_public_base_url`
+- `oficina_app_private_nlb_dns_name`
+- `oficina_app_private_nlb_listener_arn`
+- `oficina_app_node_port`
 - `terraform_shared_data_bucket_name`
 - `vpc_id`
 - `public_subnet_ids`
@@ -127,12 +134,23 @@ Saídas principais:
 
 O ambiente `lab` cria um `API Gateway HTTP API` por padrão porque ele oferece o melhor equilíbrio para laboratório acadêmico: custo por requisição, menor complexidade operacional que o `REST API` e suporte tanto a backends HTTP quanto a Lambda.
 
-O gateway não exige que a aplicação principal nem os Lambdas existam no momento do `apply`. Se `api_gateway_http_routes` e `api_gateway_lambda_routes` ficarem vazios, ele é criado apenas como porta de entrada pronta para uso posterior.
+Por padrão, o ambiente `lab` publica o `oficina-app` diretamente na raiz do gateway, sem prefixo:
+
+- `ANY /`
+- `ANY /{proxy+}`
+
+Essa publicação usa integração privada `VPC_LINK`. O Terraform cria um NLB interno com listener TCP na porta `8080`, registra o Auto Scaling Group do node group EKS em um target group na porta `30080` e configura o HTTP API para usar o listener ARN como `integration_uri`. No Kubernetes, o Service `oficina-app` permanece sem `LoadBalancer` público e usa `type: NodePort` com `nodePort: 30080`, encaminhando para `targetPort: 8080` nos pods.
+
+O gateway ainda não exige que a aplicação esteja pronta no momento do `apply`: os recursos AWS são criados, mas as chamadas só retornam sucesso depois que o overlay Kubernetes do `oficina-app` estiver aplicado e com endpoints prontos. Para voltar ao comportamento de gateway sem rota padrão, defina:
+
+```hcl
+expose_oficina_app_api_gateway = false
+```
 
 Para a aplicação principal, há dois padrões suportados:
 
 - rota HTTP pública, usando `HTTP_PROXY` com uma URL já publicada
-- rota privada, usando `HTTP_PROXY` com `connection_type = "VPC_LINK"` e `integration_uri` apontando para um listener ARN de ALB
+- rota privada, usando `HTTP_PROXY` com `connection_type = "VPC_LINK"` e `integration_uri` apontando para um listener ARN de ALB ou NLB
 
 Para Lambdas, use `api_gateway_lambda_routes`. Quando `function_name` também for informado, o Terraform cria a permissão `aws_lambda_permission` para o API Gateway invocar a função.
 
@@ -172,6 +190,15 @@ api_gateway_http_routes = {
 ```
 
 Nesse caso, use o output `api_gateway_vpc_link_security_group_id` para liberar entrada no ALB a partir do VPC Link.
+
+Com a rota padrão do `oficina-app`, o teste público usa o output `oficina_app_public_base_url`:
+
+```bash
+API_URL="$(terraform -chdir=terraform/environments/lab output -raw oficina_app_public_base_url)"
+curl -i "${API_URL}/q/openapi"
+curl -i "${API_URL}/ordem-de-servico"
+curl -i -H "Authorization: Bearer <jwt-valido>" "${API_URL}/ordem-de-servico"
+```
 
 ## Deploy da aplicação
 

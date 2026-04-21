@@ -16,6 +16,8 @@ O ponto de entrada do laboratório é `k8s/overlays/lab`.
 - `k8s/addons/keycloak/`: addon opcional para demonstração
 - `k8s/overlays/lab/`: composição final do ambiente
 
+O Service `oficina-app` usa `type: NodePort` com `nodePort: 30080`. Esse valor é consumido pelo Terraform do ambiente `lab` para registrar os nodes do EKS em um NLB interno acessado pelo API Gateway via `VPC_LINK`; ele não cria um `LoadBalancer` Kubernetes público.
+
 Renderização:
 
 ```bash

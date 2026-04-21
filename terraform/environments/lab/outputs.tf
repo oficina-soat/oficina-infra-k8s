@@ -78,5 +78,28 @@ output "api_gateway_vpc_link_id" {
 
 output "api_gateway_vpc_link_security_group_id" {
   description = "Security group criado para o VPC Link. Se nulo, o gateway esta usando SGs externos ou nao possui integracoes privadas."
-  value       = try(module.api_gateway[0].vpc_link_security_group_id, null)
+  value = try(coalesce(
+    module.api_gateway[0].vpc_link_security_group_id,
+    aws_security_group.oficina_app_api_gateway_vpc_link[0].id
+  ), null)
+}
+
+output "oficina_app_public_base_url" {
+  description = "URL publica base do oficina-app exposto na raiz do API Gateway."
+  value       = try(module.api_gateway[0].stage_invoke_url, null)
+}
+
+output "oficina_app_private_nlb_dns_name" {
+  description = "DNS privado do NLB interno usado pela integracao VPC_LINK do oficina-app."
+  value       = try(module.oficina_app_private_nlb[0].load_balancer_dns_name, null)
+}
+
+output "oficina_app_private_nlb_listener_arn" {
+  description = "Listener ARN usado como integration_uri das rotas raiz do oficina-app."
+  value       = try(module.oficina_app_private_nlb[0].listener_arn, null)
+}
+
+output "oficina_app_node_port" {
+  description = "NodePort do Service Kubernetes oficina-app usado como target do NLB interno."
+  value       = var.oficina_app_node_port
 }

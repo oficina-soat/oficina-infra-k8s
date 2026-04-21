@@ -217,6 +217,34 @@ variable "api_gateway_create_vpc_link_security_group" {
   default     = true
 }
 
+variable "expose_oficina_app_api_gateway" {
+  type        = bool
+  description = "Quando true, publica o oficina-app na raiz do HTTP API por VPC_LINK usando NLB interno e NodePort."
+  default     = true
+}
+
+variable "oficina_app_private_listener_port" {
+  type        = number
+  description = "Porta privada do listener do NLB interno usado pelo API Gateway para acessar o oficina-app."
+  default     = 8080
+
+  validation {
+    condition     = var.oficina_app_private_listener_port >= 1 && var.oficina_app_private_listener_port <= 65535
+    error_message = "oficina_app_private_listener_port deve estar entre 1 e 65535."
+  }
+}
+
+variable "oficina_app_node_port" {
+  type        = number
+  description = "NodePort fixo do Service Kubernetes oficina-app. Deve corresponder ao manifesto em k8s/base/oficina-app."
+  default     = 30080
+
+  validation {
+    condition     = var.oficina_app_node_port >= 30000 && var.oficina_app_node_port <= 32767
+    error_message = "oficina_app_node_port deve estar entre 30000 e 32767."
+  }
+}
+
 variable "api_gateway_http_routes" {
   type = map(object({
     integration_uri      = string
