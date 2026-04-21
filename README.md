@@ -9,8 +9,8 @@ O projeto provisiona a base da nuvem e publica a aplicação com:
 - repositório Amazon ECR opcional para a imagem da aplicação
 - API Gateway HTTP API com logs e throttling, pronto para expor app HTTP e Lambdas de forma opcional
 - manifests Kubernetes organizados com `kustomize` em `base`, `components`, `addons` e `overlays`
-- workflow de GitHub Actions para aplicar Terraform e fazer deploy no cluster após merge em branch protegida
-- workflows manuais de GitHub Actions para `terraform apply`, `terraform destroy` e ativação/desativação do EKS sem depender de novo deploy da aplicação
+- workflow de GitHub Actions para validar `develop`, promover mudanças para `main` via PR e fazer deploy completo após merge em `main`
+- workflow manual de GitHub Actions para desativar somente o EKS sem remover VPC, ECR, API Gateway e state remoto
 
 ## O que este projeto não cria
 
@@ -236,12 +236,14 @@ Para acesso local:
 
 O repositório mantém dois workflows para o ambiente de laboratório:
 
-- [`.github/workflows/deploy-lab.yml`](.github/workflows/deploy-lab.yml): valida e aplica toda a infraestrutura Terraform declarada em `terraform/environments/lab`
+- [`.github/workflows/deploy-lab.yml`](.github/workflows/deploy-lab.yml): valida o repositório, aplica a infraestrutura Terraform e publica a aplicação no EKS
 - [`.github/workflows/eks-deactivate-lab.yml`](.github/workflows/eks-deactivate-lab.yml): remove somente o módulo EKS para reduzir custo quando o laboratório estiver parado
 
-O workflow `Deploy Lab` executa em todo `push`, mas só faz deploy quando a ref de destino é uma branch protegida. Na prática, isso cobre o merge do PR para a branch protegida. Ele também pode ser executado manualmente por `workflow_dispatch`.
+O workflow `Deploy Lab` executa em pushes para `develop` e `main`. O job `validate` roda nas duas branches, mas o job de deploy só roda quando a ref é `main`. A execução manual por `workflow_dispatch` também deve ser feita a partir de `main`.
 
-Em pushes para `develop`, depois que o job `validate` passa, o workflow abre automaticamente um pull request para `main` quando ainda não existir um PR aberto e houver commits novos.
+Em pushes para `develop`, depois que o job `validate` passa, o workflow abre automaticamente um pull request para `main` quando ainda não existir um PR aberto e houver diferença de conteúdo entre as branches. Merges reversos de `main` para `develop` sem mudança de arquivos não geram novo PR.
+
+No deploy em `main`, o workflow executa `scripts/ci-deploy.sh`. Esse script aplica o Terraform, atualiza o kubeconfig do EKS e aplica o overlay `k8s/overlays/lab`, que inclui `oficina-app`, `oficina-app-config` e MailHog. O workflow tenta publicar a aplicação sempre; se `IMAGE_REF` não for informado, ele resolve a imagem pela tag `IMAGE_TAG` ou pela tag mais recente disponível no ECR configurado. Se nenhuma imagem válida existir, o deploy falha em vez de seguir sem a oficina.
 
 Os jobs usam o GitHub Environment `lab` para centralizar `vars` e `secrets`.
 
@@ -254,6 +256,7 @@ Valores esperados no Environment:
 - `AWS_REGION`
 - `EKS_CLUSTER_NAME`
 - `KUBERNETES_VERSION`
+- `IMAGE_REF` ou `IMAGE_TAG`: imagem da aplicação. Se ambos forem omitidos, o workflow tenta usar a tag mais recente do ECR configurado
 - `AWS_ACCESS_KEY_ID`: credencial AWS em `secrets`
 - `AWS_SECRET_ACCESS_KEY`: credencial AWS em `secrets`
 - `AWS_SESSION_TOKEN`: opcional, mas necessário quando o laboratório entregar credenciais temporárias
@@ -295,6 +298,15 @@ Valores opcionais no Environment:
 - `TF_STATE_KEY`
 - `TF_STATE_REGION`
 - `TF_STATE_DYNAMODB_TABLE`
+- `DEPLOY_KEYCLOAK`
+- `REGENERATE_JWT`
+- `FETCH_RUNTIME_SECRETS_FROM_AWS`
+- `K8S_DATABASE_SECRET_ID`
+- `K8S_JWT_SECRET_ID`
+
+Secret opcional:
+
+- `K8S_DATABASE_ENV_FILE`: conteúdo `.env` usado para criar ou atualizar o secret Kubernetes `oficina-database-env`
 
 Se o laboratório recriar as credenciais a cada nova sessão, atualize os `secrets` `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` e, quando houver, `AWS_SESSION_TOKEN` antes do merge que vai disparar o deploy.
 
@@ -306,10 +318,11 @@ Se `TF_STATE_BUCKET` não for informado, o script deriva automaticamente o nome 
 
 O workflow:
 
-- valida formatação Terraform, inicialização/validação Terraform sem backend e sintaxe dos scripts shell
+- valida formatação Terraform, inicialização/validação Terraform sem backend, renderização do overlay Kubernetes e sintaxe dos scripts shell
 - inicializa e aplica o Terraform em `terraform/environments/lab`
 - faz bootstrap do backend S3 quando necessário e migra o state para o backend remoto
-- em pushes para `develop`, abre automaticamente um pull request para `main` depois que as validações passam
+- atualiza o kubeconfig do EKS e aplica a oficina com suas dependências Kubernetes, incluindo MailHog
+- em pushes para `develop`, abre automaticamente um pull request para `main` depois que as validações passam e existe diferença real de conteúdo
 
 ## Operações manuais de Terraform
 
@@ -324,6 +337,7 @@ O workflow `Deactivate EKS Lab` exige state remoto existente. Rode `Deploy Lab` 
 ```bash
 terraform fmt -check -recursive terraform
 terraform -chdir=terraform/environments/lab validate
+kubectl kustomize k8s/overlays/lab >/tmp/oficina-lab-rendered.yaml
 bash -n scripts/*.sh
 ```
 
