@@ -9,7 +9,33 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  validate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: latest
+
+      - name: Validate repository
+        shell: bash
+        run: |
+          terraform fmt -check -recursive terraform
+          terraform -chdir=terraform/environments/lab init -backend=false -input=false
+          terraform -chdir=terraform/environments/lab validate
+          kubectl kustomize k8s/overlays/lab >/tmp/oficina-lab-rendered.yaml
+          bash -n scripts/*.sh
+
   deploy:
+    needs: validate
     if: github.event_name == 'workflow_dispatch' || github.ref_protected
     runs-on: ubuntu-latest
     environment:
@@ -20,11 +46,14 @@ jobs:
       TF_IN_AUTOMATION: "true"
       AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
       EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME || 'eks-lab' }}
-      DEPLOY_APP: ${{ vars.DEPLOY_APP || 'false' }}
+      DEPLOY_APP: ${{ vars.DEPLOY_APP || 'auto' }}
       IMAGE_REF: ${{ vars.IMAGE_REF }}
-      IMAGE_TAG: ${{ vars.IMAGE_TAG || 'latest' }}
+      IMAGE_TAG: ${{ vars.IMAGE_TAG }}
       DEPLOY_KEYCLOAK: ${{ vars.DEPLOY_KEYCLOAK || 'true' }}
       REGENERATE_JWT: ${{ vars.REGENERATE_JWT || 'true' }}
+      FETCH_RUNTIME_SECRETS_FROM_AWS: ${{ vars.FETCH_RUNTIME_SECRETS_FROM_AWS || 'true' }}
+      K8S_DATABASE_SECRET_ID: ${{ vars.K8S_DATABASE_SECRET_ID || 'oficina/lab/database/app' }}
+      K8S_JWT_SECRET_ID: ${{ vars.K8S_JWT_SECRET_ID || 'oficina/lab/jwt' }}
       TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
       TF_STATE_KEY: ${{ vars.TF_STATE_KEY || 'oficina/lab/terraform.tfstate' }}
       TF_STATE_REGION: ${{ vars.TF_STATE_REGION || vars.AWS_REGION || 'us-east-1' }}
@@ -106,3 +135,52 @@ jobs:
       - name: Deploy infrastructure and optional application
         shell: bash
         run: bash ./scripts/ci-deploy.sh
+
+  open-pull-request-to-main:
+    needs: validate
+    if: github.event_name == 'push' && github.ref_name == 'develop'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Open pull request to main
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_BRANCH: ${{ github.ref_name }}
+          BASE_BRANCH: main
+        run: |
+          git fetch origin "${BASE_BRANCH}" "${HEAD_BRANCH}"
+
+          commits_ahead="$(
+            git rev-list --count "origin/${BASE_BRANCH}..origin/${HEAD_BRANCH}"
+          )"
+
+          if [[ "${commits_ahead}" == "0" ]]; then
+            echo "Branch ${HEAD_BRANCH} nao possui commits novos em relacao a ${BASE_BRANCH}; PR nao sera criado."
+            exit 0
+          fi
+
+          existing_pr_url="$(
+            gh pr list \
+              --base "${BASE_BRANCH}" \
+              --head "${HEAD_BRANCH}" \
+              --state open \
+              --json url \
+              --jq '.[0].url // empty'
+          )"
+
+          if [[ -n "${existing_pr_url}" ]]; then
+            echo "Pull request ja existente: ${existing_pr_url}"
+            exit 0
+          fi
+
+          gh pr create \
+            --base "${BASE_BRANCH}" \
+            --head "${HEAD_BRANCH}" \
+            --title "chore: promover develop para main" \
+            --body "PR aberto automaticamente apos as validacoes do workflow Deploy Lab passarem."

@@ -26,6 +26,7 @@ O projeto provisiona a base da nuvem e publica a aplicação com:
 - AWS CLI autenticada
 - tabela DynamoDB para lock do state, se quiser locking remoto
 - `kubectl`
+- `jq`
 - `openssl`
 - imagem da aplicação em um registry acessível pelo cluster
 
@@ -100,6 +101,9 @@ Variáveis principais:
 - `api_gateway_http_routes`: rotas `HTTP_PROXY` para expor a aplicação principal ou outros backends HTTP
 - `api_gateway_lambda_routes`: rotas `AWS_PROXY` para expor Lambdas existentes
 - `api_gateway_vpc_link_subnet_ids`, `api_gateway_vpc_link_security_group_ids` e `api_gateway_create_vpc_link_security_group`: usados apenas quando uma rota HTTP precisar de integração privada via `VPC_LINK`
+- `expose_oficina_app_api_gateway`: publica o `oficina-app` na raiz do HTTP API usando `VPC_LINK`, NLB interno e o `NodePort` do Service Kubernetes. Padrão: `true`
+- `oficina_app_node_port`: `NodePort` fixo usado como target do NLB interno. Padrão: `30080`, alinhado ao manifesto em `k8s/base/oficina-app`
+- `oficina_app_private_listener_port`: porta privada do listener do NLB interno usado pelo API Gateway. Padrão: `8080`
 - `create_terraform_shared_data_bucket`, `terraform_shared_data_bucket_name` e `terraform_shared_data_bucket_force_destroy`: bucket S3 usado pelos dados compartilhados do Terraform
 
 ## Aplicação da infraestrutura
@@ -118,6 +122,10 @@ Saídas principais:
 - `ecr_repository_url`
 - `api_gateway_endpoint`
 - `api_gateway_invoke_url`
+- `oficina_app_public_base_url`
+- `oficina_app_private_nlb_dns_name`
+- `oficina_app_private_nlb_listener_arn`
+- `oficina_app_node_port`
 - `terraform_shared_data_bucket_name`
 - `vpc_id`
 - `public_subnet_ids`
@@ -126,12 +134,23 @@ Saídas principais:
 
 O ambiente `lab` cria um `API Gateway HTTP API` por padrão porque ele oferece o melhor equilíbrio para laboratório acadêmico: custo por requisição, menor complexidade operacional que o `REST API` e suporte tanto a backends HTTP quanto a Lambda.
 
-O gateway não exige que a aplicação principal nem os Lambdas existam no momento do `apply`. Se `api_gateway_http_routes` e `api_gateway_lambda_routes` ficarem vazios, ele é criado apenas como porta de entrada pronta para uso posterior.
+Por padrão, o ambiente `lab` publica o `oficina-app` diretamente na raiz do gateway, sem prefixo:
+
+- `ANY /`
+- `ANY /{proxy+}`
+
+Essa publicação usa integração privada `VPC_LINK`. O Terraform cria um NLB interno com listener TCP na porta `8080`, registra o Auto Scaling Group do node group EKS em um target group na porta `30080` e configura o HTTP API para usar o listener ARN como `integration_uri`. No Kubernetes, o Service `oficina-app` permanece sem `LoadBalancer` público e usa `type: NodePort` com `nodePort: 30080`, encaminhando para `targetPort: 8080` nos pods.
+
+O gateway ainda não exige que a aplicação esteja pronta no momento do `apply`: os recursos AWS são criados, mas as chamadas só retornam sucesso depois que o overlay Kubernetes do `oficina-app` estiver aplicado e com endpoints prontos. Para voltar ao comportamento de gateway sem rota padrão, defina:
+
+```hcl
+expose_oficina_app_api_gateway = false
+```
 
 Para a aplicação principal, há dois padrões suportados:
 
 - rota HTTP pública, usando `HTTP_PROXY` com uma URL já publicada
-- rota privada, usando `HTTP_PROXY` com `connection_type = "VPC_LINK"` e `integration_uri` apontando para um listener ARN de ALB
+- rota privada, usando `HTTP_PROXY` com `connection_type = "VPC_LINK"` e `integration_uri` apontando para um listener ARN de ALB ou NLB
 
 Para Lambdas, use `api_gateway_lambda_routes`. Quando `function_name` também for informado, o Terraform cria a permissão `aws_lambda_permission` para o API Gateway invocar a função.
 
@@ -171,6 +190,15 @@ api_gateway_http_routes = {
 ```
 
 Nesse caso, use o output `api_gateway_vpc_link_security_group_id` para liberar entrada no ALB a partir do VPC Link.
+
+Com a rota padrão do `oficina-app`, o teste público usa o output `oficina_app_public_base_url`:
+
+```bash
+API_URL="$(terraform -chdir=terraform/environments/lab output -raw oficina_app_public_base_url)"
+curl -i "${API_URL}/q/openapi"
+curl -i "${API_URL}/ordem-de-servico"
+curl -i -H "Authorization: Bearer <jwt-valido>" "${API_URL}/ordem-de-servico"
+```
 
 ## Deploy da aplicação
 
@@ -235,9 +263,9 @@ Se `KUBERNETES_VERSION` não for informado em `vars`, o workflow usa o padrão `
 
 Valores opcionais no Environment:
 
-- `DEPLOY_APP`: controla o deploy da aplicação no cluster. Padrão do workflow `Deploy Lab`: `false`
+- `DEPLOY_APP`: controla o deploy da aplicação no cluster. Use `auto`, `true` ou `false`. Padrão do workflow `Deploy Lab`: `auto`
 - `IMAGE_REF`: referência completa da imagem. Se informado, tem prioridade sobre `IMAGE_TAG`
-- `IMAGE_TAG`: tag da imagem. Quando `DEPLOY_APP=true` e `IMAGE_REF` não for informado, o workflow monta `${ecr_repository_url}:${IMAGE_TAG}` automaticamente a partir do output do Terraform capturado no mesmo `apply`. Padrão: `latest`
+- `IMAGE_TAG`: tag da imagem. Quando `DEPLOY_APP=true` ou `DEPLOY_APP=auto` e `IMAGE_REF` não for informado, o workflow monta `${ecr_repository_url}:${IMAGE_TAG}` automaticamente a partir do output do Terraform capturado no mesmo `apply`. Se `IMAGE_TAG` não for informado, o workflow usa a imagem tagueada mais recente do ECR
 - `EKS_ACCESS_PRINCIPAL_ARN`
 - `EKS_CLUSTER_ROLE_ARN`
 - `EKS_NODE_ROLE_ARN`
@@ -273,6 +301,9 @@ Valores opcionais no Environment:
 - `TF_STATE_DYNAMODB_TABLE`
 - `DEPLOY_KEYCLOAK`
 - `REGENERATE_JWT`
+- `FETCH_RUNTIME_SECRETS_FROM_AWS`: controla a busca automática de secrets de runtime no AWS Secrets Manager. Padrão: `true`
+- `K8S_DATABASE_SECRET_ID`: secret do Secrets Manager usado para recriar `oficina-database-env` quando `K8S_DATABASE_ENV_FILE` não for informado. Padrão: `oficina/lab/database/app`
+- `K8S_JWT_SECRET_ID`: secret do Secrets Manager usado para recriar `oficina-jwt-keys` quando existir. Padrão: `oficina/lab/jwt`
 - `K8S_DATABASE_ENV_FILE`: em `secrets`, com o conteúdo completo do `.env` usado para criar ou atualizar opcionalmente o secret `oficina-database-env`
 
 Se o laboratório recriar as credenciais a cada nova sessão, atualize os `secrets` `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` e, quando houver, `AWS_SESSION_TOKEN` antes do merge que vai disparar o deploy.
@@ -285,13 +316,17 @@ Se `TF_STATE_BUCKET` não for informado, o script deriva automaticamente o nome 
 
 O workflow:
 
+- valida formatação Terraform, inicialização/validação Terraform sem backend, renderização do overlay Kubernetes e sintaxe dos scripts shell
 - inicializa e aplica o Terraform em `terraform/environments/lab`
 - atualiza o kubeconfig do cluster EKS
-- opcionalmente cria o secret `oficina-database-env` quando `DEPLOY_APP=true`
-- executa o deploy da aplicação no cluster apenas quando `DEPLOY_APP=true`
-- monta `IMAGE_REF` automaticamente com o output `ecr_repository_url` apenas quando `DEPLOY_APP=true` e apenas `IMAGE_TAG` for informado
+- quando `DEPLOY_APP=auto`, procura uma imagem pronta no ECR e só executa o deploy da aplicação se encontrar uma tag
+- cria ou atualiza o secret `oficina-database-env` a partir de `K8S_DATABASE_ENV_FILE` ou do Secrets Manager, quando disponível
+- recria `oficina-jwt-keys` a partir do Secrets Manager, quando disponível; se não existir, gera um novo par de chaves para o cluster
+- monta `IMAGE_REF` automaticamente com o output `ecr_repository_url` e a tag informada ou, na ausência dela, com a tag mais recente do ECR
+- aplica o overlay Kubernetes e valida o rollout de `mailhog` e `oficina-app`, além dos endpoints do `service/oficina-app`
+- em pushes para `develop`, abre automaticamente um pull request para `main` depois que as validações passam, desde que existam commits novos; se já existir PR aberto de `develop` para `main`, reutiliza o existente
 
-O API Gateway continua sendo aplicado mesmo quando `DEPLOY_APP=false`, o que permite preparar a porta de entrada antes da publicação da aplicação principal ou dos Lambdas.
+O API Gateway continua sendo aplicado mesmo quando `DEPLOY_APP=false` ou quando `DEPLOY_APP=auto` não encontra imagem no ECR, o que permite preparar a porta de entrada antes da publicação da aplicação principal ou dos Lambdas.
 
 Os workflows pontuais `Deactivate EKS Lab` e `Activate EKS Lab` exigem state remoto existente. Rode `Terraform Apply Lab` ou `Deploy Lab` pelo menos uma vez antes de usá-los.
 

@@ -27,7 +27,7 @@ spec:
       containers:
         - name: oficina-app
           image: IMAGE_PLACEHOLDER
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           ports:
             - containerPort: 8080
               name: http
@@ -81,4 +81,5 @@ spec:
     - name: http
       port: 8080
       targetPort: 8080
-  type: ClusterIP
+      nodePort: 30080
+  type: NodePort

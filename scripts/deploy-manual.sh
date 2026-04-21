@@ -60,6 +60,39 @@ secret_exists() {
   kubectl get secret "${secret_name}" --namespace "${namespace}" >/dev/null 2>&1
 }
 
+show_app_diagnostics() {
+  log "Diagnostico do deployment oficina-app"
+  kubectl get deployment/oficina-app service/oficina-app \
+    --namespace "${APP_NAMESPACE}" \
+    --output wide || true
+  kubectl get pods \
+    --namespace "${APP_NAMESPACE}" \
+    --selector app.kubernetes.io/name=oficina-app \
+    --output wide || true
+  kubectl describe deployment/oficina-app --namespace "${APP_NAMESPACE}" || true
+  kubectl logs \
+    --namespace "${APP_NAMESPACE}" \
+    --selector app.kubernetes.io/name=oficina-app \
+    --tail=120 \
+    --all-containers=true || true
+}
+
+verify_app_service_endpoints() {
+  local endpoint_ips=""
+
+  endpoint_ips="$(
+    kubectl get endpoints oficina-app \
+      --namespace "${APP_NAMESPACE}" \
+      -o jsonpath='{.subsets[*].addresses[*].ip}' 2>/dev/null || true
+  )"
+
+  if [[ -z "${endpoint_ips}" ]]; then
+    echo "Service oficina-app nao possui endpoints prontos apos o rollout." >&2
+    show_app_diagnostics
+    exit 1
+  fi
+}
+
 escape_sed_replacement() {
   printf '%s' "$1" | sed -e 's/[&|\\]/\\&/g'
 }
@@ -138,7 +171,15 @@ if [[ "${DEPLOY_APP}" == "true" ]]; then
 
   log "Aplicando ambiente de laboratorio da aplicacao"
   render_overlay | kubectl apply -f -
-  kubectl rollout status deployment/oficina-app --namespace "${APP_NAMESPACE}" --timeout=300s
+
+  kubectl rollout status deployment/mailhog --namespace "${APP_NAMESPACE}" --timeout=180s
+
+  if ! kubectl rollout status deployment/oficina-app --namespace "${APP_NAMESPACE}" --timeout=300s; then
+    show_app_diagnostics
+    exit 1
+  fi
+
+  verify_app_service_endpoints
 fi
 
 if [[ "${DEPLOY_KEYCLOAK}" == "true" ]]; then

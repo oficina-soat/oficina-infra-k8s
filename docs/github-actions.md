@@ -21,6 +21,17 @@ Os workflows também aceitam `organization secrets/variables` e `repository secr
 
 Todos os workflows que alteram a infraestrutura compartilham o mesmo grupo de `concurrency`, então `apply`, `deploy`, `destroy`, `deactivate/activate EKS` e `cleanup` não executam em paralelo no mesmo ambiente.
 
+## Validações e PR automático
+
+O workflow `Deploy Lab` começa com um job de validação que executa:
+
+- `terraform fmt -check -recursive terraform`
+- `terraform init -backend=false` e `terraform validate` no ambiente `lab`
+- `kubectl kustomize k8s/overlays/lab`
+- `bash -n scripts/*.sh`
+
+O deploy só roda depois dessas validações. Em pushes para a branch `develop`, o workflow também abre automaticamente um pull request para `main` após o job de validação passar. Antes de criar um novo PR, ele verifica se `develop` tem commits novos em relação a `main` e se já existe um PR aberto de `develop` para `main`; quando existir, reutiliza o PR aberto.
+
 ## Desativar e reativar somente o EKS
 
 O EKS não possui um modo nativo de "stop". Para parar também o custo do control plane, o workflow `Deactivate EKS Lab` executa um `terraform destroy` direcionado somente ao alvo `module.eks`. Isso remove o cluster EKS, o managed node group e os access entries, mantendo VPC, subnets, ECR, bucket de state e API Gateway.
@@ -51,9 +62,9 @@ Se `KUBERNETES_VERSION` não for informado em `vars`, o workflow usa o padrão `
 
 Variáveis opcionais:
 
-- `DEPLOY_APP`: controla o deploy da aplicação no cluster. Padrão do workflow `Deploy Lab`: `false`
+- `DEPLOY_APP`: controla o deploy da aplicação no cluster. Use `auto`, `true` ou `false`. Padrão do workflow `Deploy Lab`: `auto`
 - `IMAGE_REF`: referência completa da imagem. Se informado, tem prioridade sobre `IMAGE_TAG`
-- `IMAGE_TAG`: tag da imagem. Quando `DEPLOY_APP=true` e `IMAGE_REF` não for informado, o workflow monta `${ecr_repository_url}:${IMAGE_TAG}` automaticamente a partir do output do Terraform capturado no mesmo `apply`. Padrão: `latest`
+- `IMAGE_TAG`: tag da imagem. Quando `DEPLOY_APP=true` ou `DEPLOY_APP=auto` e `IMAGE_REF` não for informado, o workflow monta `${ecr_repository_url}:${IMAGE_TAG}` automaticamente a partir do output do Terraform capturado no mesmo `apply`. Se `IMAGE_TAG` não for informado, o workflow usa a imagem tagueada mais recente do ECR
 - `EKS_ACCESS_PRINCIPAL_ARN`
 - `EKS_CLUSTER_ROLE_ARN`
 - `EKS_NODE_ROLE_ARN`
@@ -89,12 +100,19 @@ Variáveis opcionais:
 - `TF_STATE_DYNAMODB_TABLE`
 - `DEPLOY_KEYCLOAK`
 - `REGENERATE_JWT`
+- `FETCH_RUNTIME_SECRETS_FROM_AWS`: controla a busca automática de secrets de runtime no AWS Secrets Manager. Padrão: `true`
+- `K8S_DATABASE_SECRET_ID`: secret do Secrets Manager usado para recriar `oficina-database-env` quando `K8S_DATABASE_ENV_FILE` não for informado. Padrão: `oficina/lab/database/app`
+- `K8S_JWT_SECRET_ID`: secret do Secrets Manager usado para recriar `oficina-jwt-keys` quando existir. Padrão: `oficina/lab/jwt`
 
 ## Secrets opcionais
 
-- `K8S_DATABASE_ENV_FILE`: conteúdo completo do arquivo `.env` usado para criar ou atualizar opcionalmente o secret `oficina-database-env` no cluster quando `DEPLOY_APP=true`
+- `K8S_DATABASE_ENV_FILE`: conteúdo completo do arquivo `.env` usado para criar ou atualizar opcionalmente o secret `oficina-database-env` no cluster quando a aplicação for implantada
 
-Se `K8S_DATABASE_ENV_FILE` não for informado, o workflow não cria esse secret. Se `DEPLOY_APP=true` e ele já existir no cluster, a aplicação o reutiliza; se não existir, o deploy segue sem essas variáveis.
+Se `K8S_DATABASE_ENV_FILE` não for informado, o workflow tenta recriar `oficina-database-env` a partir de `K8S_DATABASE_SECRET_ID` no AWS Secrets Manager. O secret pode ser um `.env` em texto ou um JSON plano de chaves e valores. O deploy também acrescenta as variáveis SSL necessárias para o RDS do laboratório: `QUARKUS_DATASOURCE_REACTIVE_POSTGRESQL_SSL_MODE=require` e `QUARKUS_DATASOURCE_REACTIVE_TRUST_ALL=true`.
+
+Quando `K8S_JWT_SECRET_ID` existir no Secrets Manager, ele deve ser JSON com `privateKey`/`publicKey`, `privateKey.pem`/`publicKey.pem` ou `JWT_PRIVATE_KEY`/`JWT_PUBLIC_KEY`. Se ele não existir, o deploy gera um novo par de chaves JWT para o cluster.
+
+Depois de aplicar o overlay, o deploy valida o rollout de `mailhog` e `oficina-app`; para a aplicação, também confirma que o `service/oficina-app` possui endpoints prontos.
 
 ## Estado do Terraform
 

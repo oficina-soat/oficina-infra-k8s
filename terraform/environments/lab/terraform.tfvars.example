@@ -28,6 +28,14 @@ create_ecr_repository = true
 # O API Gateway HTTP API e criado por default, mas pode ficar sem rotas
 # ate que a aplicacao principal e/ou os Lambdas existam.
 #
+# Por default, o ambiente lab publica o oficina-app na raiz do HTTP API:
+# - ANY /
+# - ANY /{proxy+}
+#
+# Essa publicacao usa VPC_LINK, NLB interno e o NodePort 30080 do Service
+# Kubernetes oficina-app. Para desativar essa rota padrao:
+# expose_oficina_app_api_gateway = false
+#
 # Exemplo para publicar a aplicacao principal por URL publica:
 # api_gateway_http_routes = {
 #   "ANY /app" = {
