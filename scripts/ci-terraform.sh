@@ -398,17 +398,17 @@ orphan_api_gateway_ids() {
 
 fail_missing_remote_state_with_existing_resources() {
   if eks_cluster_exists; then
-    echo "O cluster EKS ${EKS_CLUSTER_NAME} ja existe, mas o state remoto ${EFFECTIVE_TF_STATE_BUCKET}/${TF_STATE_KEY} nao foi encontrado. O runner perdeu o state local de execucoes anteriores. Para recuperar com seguranca, execute o workflow manual 'Cleanup Orphan Lab Infra', depois rode 'Terraform Apply Lab' para recriar a infraestrutura com state remoto persistido, e so entao volte ao workflow de deploy." >&2
+    echo "O cluster EKS ${EKS_CLUSTER_NAME} ja existe, mas o state remoto ${EFFECTIVE_TF_STATE_BUCKET}/${TF_STATE_KEY} nao foi encontrado. Para evitar duplicacao de recursos, remova ou importe os recursos orfaos antes de rodar o workflow Deploy Lab novamente." >&2
     exit 1
   fi
 
   if orphan_network_exists; then
-    echo "A rede do laboratorio ${EKS_CLUSTER_NAME} ainda existe na AWS (VPCs: $(orphan_network_ids)), mas o state remoto ${EFFECTIVE_TF_STATE_BUCKET}/${TF_STATE_KEY} nao foi encontrado. Para evitar duplicacao de VPC/subnets e outros recursos orfaos, execute o workflow manual 'Cleanup Orphan Lab Infra', depois rode 'Terraform Apply Lab' para recriar a infraestrutura com state remoto persistido." >&2
+    echo "A rede do laboratorio ${EKS_CLUSTER_NAME} ainda existe na AWS (VPCs: $(orphan_network_ids)), mas o state remoto ${EFFECTIVE_TF_STATE_BUCKET}/${TF_STATE_KEY} nao foi encontrado. Para evitar duplicacao de VPC/subnets, remova ou importe os recursos orfaos antes de rodar o workflow Deploy Lab novamente." >&2
     exit 1
   fi
 
   if orphan_api_gateway_exists; then
-    echo "O API Gateway do laboratorio $(effective_api_gateway_name) ainda existe na AWS (APIs: $(orphan_api_gateway_ids)), mas o state remoto ${EFFECTIVE_TF_STATE_BUCKET}/${TF_STATE_KEY} nao foi encontrado. Para evitar duplicacao do gateway, execute o workflow manual 'Cleanup Orphan Lab Infra', depois rode 'Terraform Apply Lab' para recriar a infraestrutura com state remoto persistido." >&2
+    echo "O API Gateway do laboratorio $(effective_api_gateway_name) ainda existe na AWS (APIs: $(orphan_api_gateway_ids)), mas o state remoto ${EFFECTIVE_TF_STATE_BUCKET}/${TF_STATE_KEY} nao foi encontrado. Para evitar duplicacao do gateway, remova ou importe os recursos orfaos antes de rodar o workflow Deploy Lab novamente." >&2
     exit 1
   fi
 }

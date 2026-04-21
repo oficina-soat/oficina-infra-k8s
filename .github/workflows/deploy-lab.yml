@@ -15,15 +15,10 @@ jobs:
       contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-
-      - name: Setup kubectl
-        uses: azure/setup-kubectl@v4
-        with:
-          version: latest
+        uses: hashicorp/setup-terraform@v4
 
       - name: Validate repository
         shell: bash
@@ -31,7 +26,6 @@ jobs:
           terraform fmt -check -recursive terraform
           terraform -chdir=terraform/environments/lab init -backend=false -input=false
           terraform -chdir=terraform/environments/lab validate
-          kubectl kustomize k8s/overlays/lab >/tmp/oficina-lab-rendered.yaml
           bash -n scripts/*.sh
 
   deploy:
@@ -45,20 +39,15 @@ jobs:
     env:
       TF_IN_AUTOMATION: "true"
       AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+      AWS_DEFAULT_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
       EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME || 'eks-lab' }}
-      DEPLOY_APP: ${{ vars.DEPLOY_APP || 'auto' }}
-      IMAGE_REF: ${{ vars.IMAGE_REF }}
-      IMAGE_TAG: ${{ vars.IMAGE_TAG }}
-      DEPLOY_KEYCLOAK: ${{ vars.DEPLOY_KEYCLOAK || 'true' }}
-      REGENERATE_JWT: ${{ vars.REGENERATE_JWT || 'true' }}
-      FETCH_RUNTIME_SECRETS_FROM_AWS: ${{ vars.FETCH_RUNTIME_SECRETS_FROM_AWS || 'true' }}
-      K8S_DATABASE_SECRET_ID: ${{ vars.K8S_DATABASE_SECRET_ID || 'oficina/lab/database/app' }}
-      K8S_JWT_SECRET_ID: ${{ vars.K8S_JWT_SECRET_ID || 'oficina/lab/jwt' }}
       TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
       TF_STATE_KEY: ${{ vars.TF_STATE_KEY || 'oficina/lab/terraform.tfstate' }}
       TF_STATE_REGION: ${{ vars.TF_STATE_REGION || vars.AWS_REGION || 'us-east-1' }}
       TF_STATE_DYNAMODB_TABLE: ${{ vars.TF_STATE_DYNAMODB_TABLE }}
-      K8S_DATABASE_ENV_FILE: ${{ secrets.K8S_DATABASE_ENV_FILE }}
       TF_VAR_region: ${{ vars.AWS_REGION || 'us-east-1' }}
       TF_VAR_cluster_name: ${{ vars.EKS_CLUSTER_NAME || 'eks-lab' }}
       TF_VAR_kubernetes_version: ${{ vars.KUBERNETES_VERSION || '1.35' }}
@@ -93,23 +82,10 @@ jobs:
       TF_VAR_terraform_shared_data_bucket_force_destroy: ${{ vars.TERRAFORM_SHARED_DATA_BUCKET_FORCE_DESTROY || 'false' }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-
-      - name: Setup kubectl
-        uses: azure/setup-kubectl@v4
-        with:
-          version: latest
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
-          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+        uses: hashicorp/setup-terraform@v4
 
       - name: Validate workflow configuration
         shell: bash
@@ -132,9 +108,9 @@ jobs:
             echo "Aviso: TF_STATE_BUCKET ausente; o workflow usara o bucket compartilhado derivado do nome do cluster para bootstrap e backend remoto." >&2
           fi
 
-      - name: Deploy infrastructure and optional application
+      - name: Deploy lab infrastructure
         shell: bash
-        run: bash ./scripts/ci-deploy.sh
+        run: bash ./scripts/ci-terraform.sh
 
   open-pull-request-to-main:
     needs: validate
@@ -145,7 +121,7 @@ jobs:
       pull-requests: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Open pull request to main
         shell: bash

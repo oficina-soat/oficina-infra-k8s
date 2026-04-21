@@ -1,3 +1,12 @@
+locals {
+  allowed_source_security_group_ids_by_index = {
+    for index, security_group_id in var.allowed_source_security_group_ids : tostring(index) => security_group_id
+  }
+  target_security_group_ids_by_index = {
+    for index, security_group_id in var.target_security_group_ids : tostring(index) => security_group_id
+  }
+}
+
 resource "aws_security_group" "this" {
   name_prefix = "${var.name}-nlb-"
   description = "Security group do NLB interno ${var.name}"
@@ -9,7 +18,7 @@ resource "aws_security_group" "this" {
 }
 
 resource "aws_vpc_security_group_ingress_rule" "from_sources" {
-  for_each = toset(var.allowed_source_security_group_ids)
+  for_each = local.allowed_source_security_group_ids_by_index
 
   security_group_id            = aws_security_group.this.id
   referenced_security_group_id = each.value
@@ -21,7 +30,7 @@ resource "aws_vpc_security_group_ingress_rule" "from_sources" {
 }
 
 resource "aws_vpc_security_group_egress_rule" "to_targets" {
-  for_each = toset(var.target_security_group_ids)
+  for_each = local.target_security_group_ids_by_index
 
   security_group_id            = aws_security_group.this.id
   referenced_security_group_id = each.value
@@ -82,7 +91,7 @@ resource "aws_autoscaling_attachment" "this" {
 }
 
 resource "aws_vpc_security_group_ingress_rule" "targets_from_nlb" {
-  for_each = toset(var.target_security_group_ids)
+  for_each = local.target_security_group_ids_by_index
 
   security_group_id            = each.value
   referenced_security_group_id = aws_security_group.this.id
