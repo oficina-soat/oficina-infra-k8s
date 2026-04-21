@@ -289,6 +289,7 @@ Se `TF_STATE_BUCKET` não for informado, o script deriva automaticamente o nome 
 
 O workflow:
 
+- valida formatação Terraform, inicialização/validação Terraform sem backend, renderização do overlay Kubernetes e sintaxe dos scripts shell
 - inicializa e aplica o Terraform em `terraform/environments/lab`
 - atualiza o kubeconfig do cluster EKS
 - quando `DEPLOY_APP=auto`, procura uma imagem pronta no ECR e só executa o deploy da aplicação se encontrar uma tag
@@ -296,6 +297,7 @@ O workflow:
 - recria `oficina-jwt-keys` a partir do Secrets Manager, quando disponível; se não existir, gera um novo par de chaves para o cluster
 - monta `IMAGE_REF` automaticamente com o output `ecr_repository_url` e a tag informada ou, na ausência dela, com a tag mais recente do ECR
 - aplica o overlay Kubernetes e valida o rollout de `mailhog` e `oficina-app`, além dos endpoints do `service/oficina-app`
+- em pushes para `develop`, abre automaticamente um pull request para `main` depois que as validações passam, desde que existam commits novos; se já existir PR aberto de `develop` para `main`, reutiliza o existente
 
 O API Gateway continua sendo aplicado mesmo quando `DEPLOY_APP=false` ou quando `DEPLOY_APP=auto` não encontra imagem no ECR, o que permite preparar a porta de entrada antes da publicação da aplicação principal ou dos Lambdas.
 

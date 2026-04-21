@@ -21,6 +21,17 @@ Os workflows também aceitam `organization secrets/variables` e `repository secr
 
 Todos os workflows que alteram a infraestrutura compartilham o mesmo grupo de `concurrency`, então `apply`, `deploy`, `destroy`, `deactivate/activate EKS` e `cleanup` não executam em paralelo no mesmo ambiente.
 
+## Validações e PR automático
+
+O workflow `Deploy Lab` começa com um job de validação que executa:
+
+- `terraform fmt -check -recursive terraform`
+- `terraform init -backend=false` e `terraform validate` no ambiente `lab`
+- `kubectl kustomize k8s/overlays/lab`
+- `bash -n scripts/*.sh`
+
+O deploy só roda depois dessas validações. Em pushes para a branch `develop`, o workflow também abre automaticamente um pull request para `main` após o job de validação passar. Antes de criar um novo PR, ele verifica se `develop` tem commits novos em relação a `main` e se já existe um PR aberto de `develop` para `main`; quando existir, reutiliza o PR aberto.
+
 ## Desativar e reativar somente o EKS
 
 O EKS não possui um modo nativo de "stop". Para parar também o custo do control plane, o workflow `Deactivate EKS Lab` executa um `terraform destroy` direcionado somente ao alvo `module.eks`. Isso remove o cluster EKS, o managed node group e os access entries, mantendo VPC, subnets, ECR, bucket de state e API Gateway.

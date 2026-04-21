@@ -9,7 +9,33 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  validate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: latest
+
+      - name: Validate repository
+        shell: bash
+        run: |
+          terraform fmt -check -recursive terraform
+          terraform -chdir=terraform/environments/lab init -backend=false -input=false
+          terraform -chdir=terraform/environments/lab validate
+          kubectl kustomize k8s/overlays/lab >/tmp/oficina-lab-rendered.yaml
+          bash -n scripts/*.sh
+
   deploy:
+    needs: validate
     if: github.event_name == 'workflow_dispatch' || github.ref_protected
     runs-on: ubuntu-latest
     environment:
@@ -109,3 +135,52 @@ jobs:
       - name: Deploy infrastructure and optional application
         shell: bash
         run: bash ./scripts/ci-deploy.sh
+
+  open-pull-request-to-main:
+    needs: validate
+    if: github.event_name == 'push' && github.ref_name == 'develop'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Open pull request to main
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_BRANCH: ${{ github.ref_name }}
+          BASE_BRANCH: main
+        run: |
+          git fetch origin "${BASE_BRANCH}" "${HEAD_BRANCH}"
+
+          commits_ahead="$(
+            git rev-list --count "origin/${BASE_BRANCH}..origin/${HEAD_BRANCH}"
+          )"
+
+          if [[ "${commits_ahead}" == "0" ]]; then
+            echo "Branch ${HEAD_BRANCH} nao possui commits novos em relacao a ${BASE_BRANCH}; PR nao sera criado."
+            exit 0
+          fi
+
+          existing_pr_url="$(
+            gh pr list \
+              --base "${BASE_BRANCH}" \
+              --head "${HEAD_BRANCH}" \
+              --state open \
+              --json url \
+              --jq '.[0].url // empty'
+          )"
+
+          if [[ -n "${existing_pr_url}" ]]; then
+            echo "Pull request ja existente: ${existing_pr_url}"
+            exit 0
+          fi
+
+          gh pr create \
+            --base "${BASE_BRANCH}" \
+            --head "${HEAD_BRANCH}" \
+            --title "chore: promover develop para main" \
+            --body "PR aberto automaticamente apos as validacoes do workflow Deploy Lab passarem."
