@@ -20,11 +20,14 @@ jobs:
       TF_IN_AUTOMATION: "true"
       AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
       EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME || 'eks-lab' }}
-      DEPLOY_APP: ${{ vars.DEPLOY_APP || 'false' }}
+      DEPLOY_APP: ${{ vars.DEPLOY_APP || 'auto' }}
       IMAGE_REF: ${{ vars.IMAGE_REF }}
-      IMAGE_TAG: ${{ vars.IMAGE_TAG || 'latest' }}
+      IMAGE_TAG: ${{ vars.IMAGE_TAG }}
       DEPLOY_KEYCLOAK: ${{ vars.DEPLOY_KEYCLOAK || 'true' }}
       REGENERATE_JWT: ${{ vars.REGENERATE_JWT || 'true' }}
+      FETCH_RUNTIME_SECRETS_FROM_AWS: ${{ vars.FETCH_RUNTIME_SECRETS_FROM_AWS || 'true' }}
+      K8S_DATABASE_SECRET_ID: ${{ vars.K8S_DATABASE_SECRET_ID || 'oficina/lab/database/app' }}
+      K8S_JWT_SECRET_ID: ${{ vars.K8S_JWT_SECRET_ID || 'oficina/lab/jwt' }}
       TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
       TF_STATE_KEY: ${{ vars.TF_STATE_KEY || 'oficina/lab/terraform.tfstate' }}
       TF_STATE_REGION: ${{ vars.TF_STATE_REGION || vars.AWS_REGION || 'us-east-1' }}

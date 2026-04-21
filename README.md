@@ -26,6 +26,7 @@ O projeto provisiona a base da nuvem e publica a aplicação com:
 - AWS CLI autenticada
 - tabela DynamoDB para lock do state, se quiser locking remoto
 - `kubectl`
+- `jq`
 - `openssl`
 - imagem da aplicação em um registry acessível pelo cluster
 
@@ -235,9 +236,9 @@ Se `KUBERNETES_VERSION` não for informado em `vars`, o workflow usa o padrão `
 
 Valores opcionais no Environment:
 
-- `DEPLOY_APP`: controla o deploy da aplicação no cluster. Padrão do workflow `Deploy Lab`: `false`
+- `DEPLOY_APP`: controla o deploy da aplicação no cluster. Use `auto`, `true` ou `false`. Padrão do workflow `Deploy Lab`: `auto`
 - `IMAGE_REF`: referência completa da imagem. Se informado, tem prioridade sobre `IMAGE_TAG`
-- `IMAGE_TAG`: tag da imagem. Quando `DEPLOY_APP=true` e `IMAGE_REF` não for informado, o workflow monta `${ecr_repository_url}:${IMAGE_TAG}` automaticamente a partir do output do Terraform capturado no mesmo `apply`. Padrão: `latest`
+- `IMAGE_TAG`: tag da imagem. Quando `DEPLOY_APP=true` ou `DEPLOY_APP=auto` e `IMAGE_REF` não for informado, o workflow monta `${ecr_repository_url}:${IMAGE_TAG}` automaticamente a partir do output do Terraform capturado no mesmo `apply`. Se `IMAGE_TAG` não for informado, o workflow usa a imagem tagueada mais recente do ECR
 - `EKS_ACCESS_PRINCIPAL_ARN`
 - `EKS_CLUSTER_ROLE_ARN`
 - `EKS_NODE_ROLE_ARN`
@@ -273,6 +274,9 @@ Valores opcionais no Environment:
 - `TF_STATE_DYNAMODB_TABLE`
 - `DEPLOY_KEYCLOAK`
 - `REGENERATE_JWT`
+- `FETCH_RUNTIME_SECRETS_FROM_AWS`: controla a busca automática de secrets de runtime no AWS Secrets Manager. Padrão: `true`
+- `K8S_DATABASE_SECRET_ID`: secret do Secrets Manager usado para recriar `oficina-database-env` quando `K8S_DATABASE_ENV_FILE` não for informado. Padrão: `oficina/lab/database/app`
+- `K8S_JWT_SECRET_ID`: secret do Secrets Manager usado para recriar `oficina-jwt-keys` quando existir. Padrão: `oficina/lab/jwt`
 - `K8S_DATABASE_ENV_FILE`: em `secrets`, com o conteúdo completo do `.env` usado para criar ou atualizar opcionalmente o secret `oficina-database-env`
 
 Se o laboratório recriar as credenciais a cada nova sessão, atualize os `secrets` `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` e, quando houver, `AWS_SESSION_TOKEN` antes do merge que vai disparar o deploy.
@@ -287,11 +291,13 @@ O workflow:
 
 - inicializa e aplica o Terraform em `terraform/environments/lab`
 - atualiza o kubeconfig do cluster EKS
-- opcionalmente cria o secret `oficina-database-env` quando `DEPLOY_APP=true`
-- executa o deploy da aplicação no cluster apenas quando `DEPLOY_APP=true`
-- monta `IMAGE_REF` automaticamente com o output `ecr_repository_url` apenas quando `DEPLOY_APP=true` e apenas `IMAGE_TAG` for informado
+- quando `DEPLOY_APP=auto`, procura uma imagem pronta no ECR e só executa o deploy da aplicação se encontrar uma tag
+- cria ou atualiza o secret `oficina-database-env` a partir de `K8S_DATABASE_ENV_FILE` ou do Secrets Manager, quando disponível
+- recria `oficina-jwt-keys` a partir do Secrets Manager, quando disponível; se não existir, gera um novo par de chaves para o cluster
+- monta `IMAGE_REF` automaticamente com o output `ecr_repository_url` e a tag informada ou, na ausência dela, com a tag mais recente do ECR
+- aplica o overlay Kubernetes e valida o rollout de `mailhog` e `oficina-app`, além dos endpoints do `service/oficina-app`
 
-O API Gateway continua sendo aplicado mesmo quando `DEPLOY_APP=false`, o que permite preparar a porta de entrada antes da publicação da aplicação principal ou dos Lambdas.
+O API Gateway continua sendo aplicado mesmo quando `DEPLOY_APP=false` ou quando `DEPLOY_APP=auto` não encontra imagem no ECR, o que permite preparar a porta de entrada antes da publicação da aplicação principal ou dos Lambdas.
 
 Os workflows pontuais `Deactivate EKS Lab` e `Activate EKS Lab` exigem state remoto existente. Rode `Terraform Apply Lab` ou `Deploy Lab` pelo menos uma vez antes de usá-los.
 
