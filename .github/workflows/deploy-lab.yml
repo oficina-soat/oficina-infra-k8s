@@ -58,12 +58,16 @@ jobs:
       IMAGE_REF: ${{ vars.IMAGE_REF }}
       IMAGE_TAG: ${{ vars.IMAGE_TAG }}
       DEPLOY_KEYCLOAK: ${{ vars.DEPLOY_KEYCLOAK || 'false' }}
-      REGENERATE_JWT: ${{ vars.REGENERATE_JWT || 'true' }}
+      REGENERATE_JWT: ${{ vars.REGENERATE_JWT || 'false' }}
+      ROTATE_JWT_SECRET: ${{ vars.ROTATE_JWT_SECRET || 'false' }}
       OFICINA_AUTH_ISSUER: ${{ vars.OFICINA_AUTH_ISSUER }}
       OFICINA_AUTH_JWKS_URI: ${{ vars.OFICINA_AUTH_JWKS_URI }}
       FETCH_RUNTIME_SECRETS_FROM_AWS: ${{ vars.FETCH_RUNTIME_SECRETS_FROM_AWS || 'true' }}
       K8S_DATABASE_SECRET_ID: ${{ vars.K8S_DATABASE_SECRET_ID || 'oficina/lab/database/app' }}
       K8S_JWT_SECRET_ID: ${{ vars.K8S_JWT_SECRET_ID || 'oficina/lab/jwt' }}
+      K8S_JWT_SECRET_PRIVATE_KEY_FIELD: ${{ vars.K8S_JWT_SECRET_PRIVATE_KEY_FIELD || 'privateKeyPem' }}
+      K8S_JWT_SECRET_PUBLIC_KEY_FIELD: ${{ vars.K8S_JWT_SECRET_PUBLIC_KEY_FIELD || 'publicKeyPem' }}
+      K8S_JWT_SECRET_KMS_KEY_ID: ${{ vars.K8S_JWT_SECRET_KMS_KEY_ID }}
       TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
       TF_STATE_KEY: ${{ vars.TF_STATE_KEY || 'oficina/lab/terraform.tfstate' }}
       TF_STATE_REGION: ${{ vars.TF_STATE_REGION || vars.AWS_REGION || 'us-east-1' }}

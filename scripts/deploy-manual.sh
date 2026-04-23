@@ -11,7 +11,7 @@ UPDATE_KUBECONFIG="${UPDATE_KUBECONFIG:-false}"
 IMAGE_REF="${IMAGE_REF:-}"
 DEPLOY_APP="${DEPLOY_APP:-true}"
 DEPLOY_KEYCLOAK="${DEPLOY_KEYCLOAK:-false}"
-REGENERATE_JWT="${REGENERATE_JWT:-true}"
+REGENERATE_JWT="${REGENERATE_JWT:-false}"
 JWT_DIR="${JWT_DIR:-.tmp/jwt}"
 OFICINA_AUTH_ISSUER="${OFICINA_AUTH_ISSUER:-oficina-api}"
 OFICINA_AUTH_JWKS_URI="${OFICINA_AUTH_JWKS_URI:-file:/jwt/publicKey.pem}"
@@ -31,7 +31,7 @@ Variaveis suportadas:
   AWS_REGION             Regiao AWS. Default: us-east-1
   DEPLOY_APP             true|false. Default: true
   DEPLOY_KEYCLOAK        true|false. Default: false
-  REGENERATE_JWT         true|false. Default: true
+  REGENERATE_JWT         true|false. Default: false; chaves ausentes em JWT_DIR ainda sao geradas
   JWT_DIR                Diretorio das chaves JWT. Default: .tmp/jwt
   OFICINA_AUTH_ISSUER    Issuer esperado pela aplicacao. Default: oficina-api
   OFICINA_AUTH_JWKS_URI  JWKS/public key location. Default: file:/jwt/publicKey.pem
@@ -163,8 +163,8 @@ if [[ "${DEPLOY_APP}" == "true" ]]; then
     log "Secret opcional ${APP_NAMESPACE}/${DB_SECRET_NAME} ausente; seguindo sem variaveis de banco."
   fi
 
-  if [[ "${REGENERATE_JWT}" == "true" ]]; then
-    log "Gerando novo par de chaves JWT"
+  if [[ "${REGENERATE_JWT}" == "true" || ! -f "${JWT_DIR}/privateKey.pem" || ! -f "${JWT_DIR}/publicKey.pem" ]]; then
+    log "Gerando par de chaves JWT em ${JWT_DIR}"
     mkdir -p "${JWT_DIR}"
     openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "${JWT_DIR}/privateKey.pem"
     openssl pkey -in "${JWT_DIR}/privateKey.pem" -pubout -out "${JWT_DIR}/publicKey.pem"
