@@ -30,6 +30,12 @@ output "lambda_route_keys" {
   value = keys(var.lambda_routes)
 }
 
+output "jwt_authorizer_ids" {
+  value = {
+    for key, authorizer in aws_apigatewayv2_authorizer.jwt : key => authorizer.id
+  }
+}
+
 output "vpc_link_id" {
   value = try(aws_apigatewayv2_vpc_link.this[0].id, null)
 }

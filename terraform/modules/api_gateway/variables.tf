@@ -63,10 +63,22 @@ variable "http_routes" {
     integration_uri      = string
     integration_method   = optional(string, "ANY")
     authorization_type   = optional(string, "NONE")
+    authorizer_key       = optional(string)
+    authorization_scopes = optional(list(string), [])
     connection_type      = optional(string, "INTERNET")
     timeout_milliseconds = optional(number, 30000)
   }))
   description = "Mapa de rotas HTTP_PROXY. A chave do mapa deve ser o route key, por exemplo `ANY /app/{proxy+}`."
+  default     = {}
+}
+
+variable "jwt_authorizers" {
+  type = map(object({
+    issuer           = optional(string)
+    audience         = list(string)
+    identity_sources = optional(list(string), ["$request.header.Authorization"])
+  }))
+  description = "Authorizers JWT nativos do HTTP API. Quando issuer for nulo, usa o endpoint publico do proprio API Gateway."
   default     = {}
 }
 
@@ -75,6 +87,8 @@ variable "lambda_routes" {
     invoke_arn             = string
     function_name          = optional(string)
     authorization_type     = optional(string, "NONE")
+    authorizer_key         = optional(string)
+    authorization_scopes   = optional(list(string), [])
     payload_format_version = optional(string, "2.0")
     timeout_milliseconds   = optional(number, 30000)
   }))

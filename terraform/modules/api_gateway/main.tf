@@ -66,6 +66,20 @@ resource "aws_apigatewayv2_api" "this" {
   tags = var.tags
 }
 
+resource "aws_apigatewayv2_authorizer" "jwt" {
+  for_each = var.jwt_authorizers
+
+  api_id           = aws_apigatewayv2_api.this.id
+  authorizer_type  = "JWT"
+  identity_sources = each.value.identity_sources
+  name             = each.key
+
+  jwt_configuration {
+    audience = each.value.audience
+    issuer   = coalesce(each.value.issuer, aws_apigatewayv2_api.this.api_endpoint)
+  }
+}
+
 resource "aws_apigatewayv2_integration" "http" {
   for_each = local.http_routes
 
@@ -82,10 +96,12 @@ resource "aws_apigatewayv2_integration" "http" {
 resource "aws_apigatewayv2_route" "http" {
   for_each = local.http_routes
 
-  api_id             = aws_apigatewayv2_api.this.id
-  route_key          = each.key
-  authorization_type = each.value.authorization_type
-  target             = "integrations/${aws_apigatewayv2_integration.http[each.key].id}"
+  api_id               = aws_apigatewayv2_api.this.id
+  route_key            = each.key
+  authorization_type   = each.value.authorization_type
+  authorizer_id        = upper(each.value.authorization_type) == "JWT" ? aws_apigatewayv2_authorizer.jwt[each.value.authorizer_key].id : null
+  authorization_scopes = upper(each.value.authorization_type) == "JWT" ? each.value.authorization_scopes : []
+  target               = "integrations/${aws_apigatewayv2_integration.http[each.key].id}"
 }
 
 resource "aws_apigatewayv2_integration" "lambda" {
@@ -103,10 +119,12 @@ resource "aws_apigatewayv2_integration" "lambda" {
 resource "aws_apigatewayv2_route" "lambda" {
   for_each = local.lambda_routes
 
-  api_id             = aws_apigatewayv2_api.this.id
-  route_key          = each.key
-  authorization_type = each.value.authorization_type
-  target             = "integrations/${aws_apigatewayv2_integration.lambda[each.key].id}"
+  api_id               = aws_apigatewayv2_api.this.id
+  route_key            = each.key
+  authorization_type   = each.value.authorization_type
+  authorizer_id        = upper(each.value.authorization_type) == "JWT" ? aws_apigatewayv2_authorizer.jwt[each.value.authorizer_key].id : null
+  authorization_scopes = upper(each.value.authorization_type) == "JWT" ? each.value.authorization_scopes : []
+  target               = "integrations/${aws_apigatewayv2_integration.lambda[each.key].id}"
 }
 
 resource "aws_lambda_permission" "allow_api_gateway" {

@@ -61,6 +61,8 @@ jobs:
       IMAGE_TAG: ${{ vars.IMAGE_TAG }}
       DEPLOY_KEYCLOAK: ${{ vars.DEPLOY_KEYCLOAK || 'false' }}
       REGENERATE_JWT: ${{ vars.REGENERATE_JWT || 'true' }}
+      OFICINA_AUTH_ISSUER: ${{ vars.OFICINA_AUTH_ISSUER }}
+      OFICINA_AUTH_JWKS_URI: ${{ vars.OFICINA_AUTH_JWKS_URI }}
       FETCH_RUNTIME_SECRETS_FROM_AWS: ${{ vars.FETCH_RUNTIME_SECRETS_FROM_AWS || 'true' }}
       K8S_DATABASE_SECRET_ID: ${{ vars.K8S_DATABASE_SECRET_ID || 'oficina/lab/database/app' }}
       K8S_JWT_SECRET_ID: ${{ vars.K8S_JWT_SECRET_ID || 'oficina/lab/jwt' }}
@@ -95,7 +97,12 @@ jobs:
       TF_VAR_api_gateway_vpc_link_subnet_ids: ${{ vars.API_GATEWAY_VPC_LINK_SUBNET_IDS }}
       TF_VAR_api_gateway_vpc_link_security_group_ids: ${{ vars.API_GATEWAY_VPC_LINK_SECURITY_GROUP_IDS }}
       TF_VAR_api_gateway_create_vpc_link_security_group: ${{ vars.API_GATEWAY_CREATE_VPC_LINK_SECURITY_GROUP || 'true' }}
+      TF_VAR_oficina_app_api_gateway_jwt_authorizer_enabled: ${{ vars.OFICINA_APP_API_GATEWAY_JWT_AUTHORIZER_ENABLED || 'false' }}
+      TF_VAR_oficina_app_api_gateway_jwt_issuer: ${{ vars.OFICINA_APP_API_GATEWAY_JWT_ISSUER }}
+      TF_VAR_oficina_app_api_gateway_jwt_audience: ${{ vars.OFICINA_APP_API_GATEWAY_JWT_AUDIENCE }}
+      TF_VAR_oficina_app_api_gateway_jwt_scopes: ${{ vars.OFICINA_APP_API_GATEWAY_JWT_SCOPES }}
       TF_VAR_api_gateway_http_routes: ${{ vars.API_GATEWAY_HTTP_ROUTES }}
+      TF_VAR_api_gateway_jwt_authorizers: ${{ vars.API_GATEWAY_JWT_AUTHORIZERS }}
       TF_VAR_api_gateway_lambda_routes: ${{ vars.API_GATEWAY_LAMBDA_ROUTES }}
       TF_VAR_create_terraform_shared_data_bucket: ${{ vars.CREATE_TERRAFORM_SHARED_DATA_BUCKET || 'true' }}
       TF_VAR_terraform_shared_data_bucket_name: ${{ vars.TERRAFORM_SHARED_DATA_BUCKET_NAME || vars.TF_STATE_BUCKET }}

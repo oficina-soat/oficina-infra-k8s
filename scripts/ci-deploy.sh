@@ -21,6 +21,8 @@ FETCH_RUNTIME_SECRETS_FROM_AWS="${FETCH_RUNTIME_SECRETS_FROM_AWS:-true}"
 DEPLOY_APP="${DEPLOY_APP:-auto}"
 DEPLOY_KEYCLOAK="${DEPLOY_KEYCLOAK:-false}"
 REGENERATE_JWT="${REGENERATE_JWT:-true}"
+OFICINA_AUTH_ISSUER="${OFICINA_AUTH_ISSUER:-}"
+OFICINA_AUTH_JWKS_URI="${OFICINA_AUTH_JWKS_URI:-}"
 db_env_file=""
 ecr_repository_url_file=""
 jwt_tmp_dir=""
@@ -77,6 +79,8 @@ normalize_optional_envs() {
   unset_if_empty "K8S_DATABASE_ENV_FILE"
   unset_if_empty "K8S_DATABASE_SECRET_ID"
   unset_if_empty "K8S_JWT_SECRET_ID"
+  unset_if_empty "OFICINA_AUTH_ISSUER"
+  unset_if_empty "OFICINA_AUTH_JWKS_URI"
 }
 
 is_truthy() {
@@ -420,6 +424,23 @@ prepare_jwt_secret_from_secrets_manager() {
   log "Usando chaves JWT do Secrets Manager ${K8S_JWT_SECRET_ID}."
 }
 
+prepare_app_auth_config_from_terraform() {
+  local api_gateway_endpoint=""
+
+  if [[ -z "${OFICINA_AUTH_ISSUER:-}" ]]; then
+    if api_gateway_endpoint="$(terraform -chdir="${TERRAFORM_DIR}" output -raw api_gateway_endpoint 2>/dev/null)" && [[ -n "${api_gateway_endpoint}" && "${api_gateway_endpoint}" != "null" ]]; then
+      OFICINA_AUTH_ISSUER="${api_gateway_endpoint%/}"
+    fi
+  fi
+
+  if [[ -z "${OFICINA_AUTH_JWKS_URI:-}" && -n "${OFICINA_AUTH_ISSUER:-}" ]]; then
+    OFICINA_AUTH_JWKS_URI="${OFICINA_AUTH_ISSUER%/}/.well-known/jwks.json"
+  fi
+
+  export OFICINA_AUTH_ISSUER
+  export OFICINA_AUTH_JWKS_URI
+}
+
 ecr_repository_name_from_url() {
   local repository_url="$1"
 
@@ -540,6 +561,7 @@ aws eks update-kubeconfig --region "${AWS_REGION}" --name "${EKS_CLUSTER_NAME}"
 if [[ "${DEPLOY_APP}" == "true" ]]; then
   prepare_database_secret
   prepare_jwt_secret_from_secrets_manager
+  prepare_app_auth_config_from_terraform
 fi
 
 IMAGE_REF="${IMAGE_REF:-}" \
@@ -549,4 +571,6 @@ UPDATE_KUBECONFIG=false \
 DEPLOY_APP="${DEPLOY_APP}" \
 DEPLOY_KEYCLOAK="${DEPLOY_KEYCLOAK}" \
 REGENERATE_JWT="${REGENERATE_JWT}" \
+OFICINA_AUTH_ISSUER="${OFICINA_AUTH_ISSUER:-}" \
+OFICINA_AUTH_JWKS_URI="${OFICINA_AUTH_JWKS_URI:-}" \
 bash "${REPO_ROOT}/scripts/deploy-manual.sh"

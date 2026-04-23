@@ -7,8 +7,9 @@ metadata:
     app.kubernetes.io/part-of: oficina
 data:
   JAVA_TOOL_OPTIONS: -Dquarkus.hibernate-orm.schema-management.strategy=update
-  MP_JWT_VERIFY_PUBLICKEY_LOCATION: file:/jwt/publicKey.pem
-  SMALLRYE_JWT_SIGN_KEY_LOCATION: file:/jwt/privateKey.pem
+  OFICINA_AUTH_ISSUER: OFICINA_AUTH_ISSUER_PLACEHOLDER
+  OFICINA_AUTH_AUDIENCE: oficina-app
+  MP_JWT_VERIFY_PUBLICKEY_LOCATION: OFICINA_AUTH_JWKS_URI_PLACEHOLDER
   QUARKUS_DATASOURCE_REACTIVE_POSTGRESQL_SSL_MODE: require
   QUARKUS_DATASOURCE_REACTIVE_TRUST_ALL: "true"
   QUARKUS_MAILER_HOST: mailhog
