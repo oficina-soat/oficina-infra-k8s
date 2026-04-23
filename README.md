@@ -222,7 +222,7 @@ IMAGE_REF=<registry>/oficina:<tag> \
 O script:
 
 - reutiliza o secret `oficina-database-env` quando ele existir
-- gera ou reutiliza as chaves JWT
+- reutiliza chaves JWT em `JWT_DIR`; se ausentes, gera um par local
 - aplica o overlay `k8s/overlays/lab`
 - opcionalmente publica o addon `k8s/addons/keycloak`
 
@@ -306,10 +306,14 @@ Valores opcionais no Environment:
 - `TF_STATE_REGION`
 - `TF_STATE_DYNAMODB_TABLE`
 - `DEPLOY_KEYCLOAK`
-- `REGENERATE_JWT`
+- `REGENERATE_JWT`: default `false`; use `true` apenas para rotacionar explicitamente chaves locais
+- `ROTATE_JWT_SECRET`: default `false`; quando `true`, rotaciona o secret JWT no Secrets Manager
 - `FETCH_RUNTIME_SECRETS_FROM_AWS`
 - `K8S_DATABASE_SECRET_ID`
-- `K8S_JWT_SECRET_ID`
+- `K8S_JWT_SECRET_ID`: default `oficina/lab/jwt`; usado para criar/reutilizar o par JWT compartilhado com o `oficina-auth-lambda`
+- `K8S_JWT_SECRET_PRIVATE_KEY_FIELD`: default `privateKeyPem`
+- `K8S_JWT_SECRET_PUBLIC_KEY_FIELD`: default `publicKeyPem`
+- `K8S_JWT_SECRET_KMS_KEY_ID`: KMS key opcional para criação do secret JWT
 
 Secret opcional:
 

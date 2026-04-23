@@ -17,10 +17,14 @@ TF_STATE_DYNAMODB_TABLE="${TF_STATE_DYNAMODB_TABLE:-}"
 K8S_DATABASE_ENV_FILE="${K8S_DATABASE_ENV_FILE:-}"
 K8S_DATABASE_SECRET_ID="${K8S_DATABASE_SECRET_ID:-oficina/lab/database/app}"
 K8S_JWT_SECRET_ID="${K8S_JWT_SECRET_ID:-oficina/lab/jwt}"
+K8S_JWT_SECRET_PRIVATE_KEY_FIELD="${K8S_JWT_SECRET_PRIVATE_KEY_FIELD:-privateKeyPem}"
+K8S_JWT_SECRET_PUBLIC_KEY_FIELD="${K8S_JWT_SECRET_PUBLIC_KEY_FIELD:-publicKeyPem}"
+K8S_JWT_SECRET_KMS_KEY_ID="${K8S_JWT_SECRET_KMS_KEY_ID:-}"
 FETCH_RUNTIME_SECRETS_FROM_AWS="${FETCH_RUNTIME_SECRETS_FROM_AWS:-true}"
 DEPLOY_APP="${DEPLOY_APP:-auto}"
 DEPLOY_KEYCLOAK="${DEPLOY_KEYCLOAK:-false}"
-REGENERATE_JWT="${REGENERATE_JWT:-true}"
+REGENERATE_JWT="${REGENERATE_JWT:-false}"
+ROTATE_JWT_SECRET="${ROTATE_JWT_SECRET:-false}"
 OFICINA_AUTH_ISSUER="${OFICINA_AUTH_ISSUER:-}"
 OFICINA_AUTH_JWKS_URI="${OFICINA_AUTH_JWKS_URI:-}"
 db_env_file=""
@@ -79,6 +83,10 @@ normalize_optional_envs() {
   unset_if_empty "K8S_DATABASE_ENV_FILE"
   unset_if_empty "K8S_DATABASE_SECRET_ID"
   unset_if_empty "K8S_JWT_SECRET_ID"
+  unset_if_empty "K8S_JWT_SECRET_PRIVATE_KEY_FIELD"
+  unset_if_empty "K8S_JWT_SECRET_PUBLIC_KEY_FIELD"
+  unset_if_empty "K8S_JWT_SECRET_KMS_KEY_ID"
+  unset_if_empty "ROTATE_JWT_SECRET"
   unset_if_empty "OFICINA_AUTH_ISSUER"
   unset_if_empty "OFICINA_AUTH_JWKS_URI"
 }
@@ -92,6 +100,17 @@ is_truthy() {
       return 1
       ;;
   esac
+}
+
+generate_jwt_keypair() {
+  local jwt_dir="$1"
+
+  require_cmd openssl
+  mkdir -p "${jwt_dir}"
+  openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "${jwt_dir}/privateKey.pem"
+  openssl pkey -in "${jwt_dir}/privateKey.pem" -pubout -out "${jwt_dir}/publicKey.pem"
+  chmod 600 "${jwt_dir}/privateKey.pem"
+  chmod 644 "${jwt_dir}/publicKey.pem"
 }
 
 validate_deploy_app_mode() {
@@ -135,6 +154,69 @@ fetch_secret_string_to_file() {
     echo "Secret ${secret_id} nao possui SecretString legivel." >&2
     return 1
   fi
+}
+
+create_or_rotate_jwt_secret_in_secrets_manager() {
+  local tmp_dir=""
+  local secret_json_file=""
+
+  require_cmd jq
+  require_non_empty "${K8S_JWT_SECRET_ID}" "K8S_JWT_SECRET_ID"
+  require_non_empty "${K8S_JWT_SECRET_PRIVATE_KEY_FIELD}" "K8S_JWT_SECRET_PRIVATE_KEY_FIELD"
+  require_non_empty "${K8S_JWT_SECRET_PUBLIC_KEY_FIELD}" "K8S_JWT_SECRET_PUBLIC_KEY_FIELD"
+
+  tmp_dir="$(mktemp -d)"
+  secret_json_file="${tmp_dir}/jwt-secret.json"
+
+  generate_jwt_keypair "${tmp_dir}"
+
+  jq -n \
+    --rawfile privateKeyPem "${tmp_dir}/privateKey.pem" \
+    --rawfile publicKeyPem "${tmp_dir}/publicKey.pem" \
+    --arg privateKeyField "${K8S_JWT_SECRET_PRIVATE_KEY_FIELD}" \
+    --arg publicKeyField "${K8S_JWT_SECRET_PUBLIC_KEY_FIELD}" \
+    '{($privateKeyField): $privateKeyPem, ($publicKeyField): $publicKeyPem}' \
+    > "${secret_json_file}"
+
+  if secretmanager_secret_exists "${K8S_JWT_SECRET_ID}"; then
+    log "Rotacionando secret JWT no Secrets Manager ${K8S_JWT_SECRET_ID}."
+    aws secretsmanager put-secret-value \
+      --region "${AWS_REGION}" \
+      --secret-id "${K8S_JWT_SECRET_ID}" \
+      --secret-string "file://${secret_json_file}" >/dev/null
+  else
+    log "Criando secret JWT compartilhado no Secrets Manager ${K8S_JWT_SECRET_ID}."
+    if [[ -n "${K8S_JWT_SECRET_KMS_KEY_ID}" ]]; then
+      aws secretsmanager create-secret \
+        --region "${AWS_REGION}" \
+        --name "${K8S_JWT_SECRET_ID}" \
+        --kms-key-id "${K8S_JWT_SECRET_KMS_KEY_ID}" \
+        --description "Chaves JWT compartilhadas da Oficina no ambiente lab" \
+        --secret-string "file://${secret_json_file}" >/dev/null
+    else
+      aws secretsmanager create-secret \
+        --region "${AWS_REGION}" \
+        --name "${K8S_JWT_SECRET_ID}" \
+        --description "Chaves JWT compartilhadas da Oficina no ambiente lab" \
+        --secret-string "file://${secret_json_file}" >/dev/null
+    fi
+  fi
+
+  rm -rf "${tmp_dir}"
+}
+
+ensure_jwt_secret_in_secrets_manager() {
+  if [[ "${ROTATE_JWT_SECRET}" == "true" ]]; then
+    create_or_rotate_jwt_secret_in_secrets_manager
+    return
+  fi
+
+  if secretmanager_secret_exists "${K8S_JWT_SECRET_ID}"; then
+    log "Usando secret JWT existente no Secrets Manager ${K8S_JWT_SECRET_ID}."
+    return
+  fi
+
+  create_or_rotate_jwt_secret_in_secrets_manager
 }
 
 write_secret_string_as_env_file() {
@@ -384,10 +466,7 @@ prepare_jwt_secret_from_secrets_manager() {
     return
   fi
 
-  if ! secretmanager_secret_exists "${K8S_JWT_SECRET_ID}"; then
-    log "Secret Manager ${K8S_JWT_SECRET_ID} nao encontrado; o deploy gerara um novo par JWT local para o cluster."
-    return
-  fi
+  ensure_jwt_secret_in_secrets_manager
 
   secret_string_file="$(mktemp)"
 
@@ -403,10 +482,10 @@ prepare_jwt_secret_from_secrets_manager() {
   fi
 
   private_key="$(
-    jq -r '.["privateKey.pem"] // .privateKeyPem // .privateKey // .private_key // .private_key_pem // .PRIVATE_KEY // .JWT_PRIVATE_KEY // empty' "${secret_string_file}"
+    jq -r --arg field "${K8S_JWT_SECRET_PRIVATE_KEY_FIELD}" '.[$field] // .["privateKey.pem"] // .privateKeyPem // .privateKey // .private_key // .private_key_pem // .PRIVATE_KEY // .JWT_PRIVATE_KEY // empty' "${secret_string_file}"
   )"
   public_key="$(
-    jq -r '.["publicKey.pem"] // .publicKeyPem // .publicKey // .public_key // .public_key_pem // .PUBLIC_KEY // .JWT_PUBLIC_KEY // empty' "${secret_string_file}"
+    jq -r --arg field "${K8S_JWT_SECRET_PUBLIC_KEY_FIELD}" '.[$field] // .["publicKey.pem"] // .publicKeyPem // .publicKey // .public_key // .public_key_pem // .PUBLIC_KEY // .JWT_PUBLIC_KEY // empty' "${secret_string_file}"
   )"
   rm -f "${secret_string_file}"
 
@@ -528,7 +607,11 @@ normalize_optional_envs
 DEPLOY_APP="${DEPLOY_APP:-auto}"
 K8S_DATABASE_SECRET_ID="${K8S_DATABASE_SECRET_ID:-oficina/lab/database/app}"
 K8S_JWT_SECRET_ID="${K8S_JWT_SECRET_ID:-oficina/lab/jwt}"
+K8S_JWT_SECRET_PRIVATE_KEY_FIELD="${K8S_JWT_SECRET_PRIVATE_KEY_FIELD:-privateKeyPem}"
+K8S_JWT_SECRET_PUBLIC_KEY_FIELD="${K8S_JWT_SECRET_PUBLIC_KEY_FIELD:-publicKeyPem}"
+K8S_JWT_SECRET_KMS_KEY_ID="${K8S_JWT_SECRET_KMS_KEY_ID:-}"
 FETCH_RUNTIME_SECRETS_FROM_AWS="${FETCH_RUNTIME_SECRETS_FROM_AWS:-true}"
+ROTATE_JWT_SECRET="${ROTATE_JWT_SECRET:-false}"
 validate_deploy_app_mode
 
 require_cmd aws
