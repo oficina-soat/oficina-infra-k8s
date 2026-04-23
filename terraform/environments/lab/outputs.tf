@@ -72,6 +72,10 @@ output "api_gateway_lambda_route_keys" {
   value = try(module.api_gateway[0].lambda_route_keys, [])
 }
 
+output "api_gateway_jwt_authorizer_ids" {
+  value = try(module.api_gateway[0].jwt_authorizer_ids, {})
+}
+
 output "api_gateway_vpc_link_id" {
   value = try(module.api_gateway[0].vpc_link_id, null)
 }

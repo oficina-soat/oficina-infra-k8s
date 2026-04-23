@@ -72,7 +72,11 @@ normalize_optional_envs() {
   unset_if_empty "TF_VAR_api_gateway_vpc_link_subnet_ids"
   unset_if_empty "TF_VAR_api_gateway_vpc_link_security_group_ids"
   unset_if_empty "TF_VAR_api_gateway_http_routes"
+  unset_if_empty "TF_VAR_api_gateway_jwt_authorizers"
   unset_if_empty "TF_VAR_api_gateway_lambda_routes"
+  unset_if_empty "TF_VAR_oficina_app_api_gateway_jwt_issuer"
+  unset_if_empty "TF_VAR_oficina_app_api_gateway_jwt_audience"
+  unset_if_empty "TF_VAR_oficina_app_api_gateway_jwt_scopes"
 }
 
 is_truthy() {

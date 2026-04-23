@@ -8,20 +8,77 @@ locals {
   )
   api_gateway_name                        = coalesce(var.api_gateway_name, "${var.cluster_name}-http-api")
   expose_oficina_app_api_gateway          = var.create_api_gateway && var.expose_oficina_app_api_gateway
+  oficina_app_authorizer_key              = "oficina-app"
+  oficina_app_route_authorization_type    = var.oficina_app_api_gateway_jwt_authorizer_enabled ? "JWT" : "NONE"
+  oficina_app_route_authorizer_key        = var.oficina_app_api_gateway_jwt_authorizer_enabled ? local.oficina_app_authorizer_key : null
+  oficina_app_route_authorization_scopes  = var.oficina_app_api_gateway_jwt_authorizer_enabled ? var.oficina_app_api_gateway_jwt_scopes : []
   oficina_app_private_nlb_name            = substr("${var.cluster_name}-oficina-app", 0, 29)
   api_gateway_vpc_link_security_group_ids = local.expose_oficina_app_api_gateway ? concat(var.api_gateway_vpc_link_security_group_ids, [aws_security_group.oficina_app_api_gateway_vpc_link[0].id]) : var.api_gateway_vpc_link_security_group_ids
   api_gateway_create_vpc_link_security_sg = local.expose_oficina_app_api_gateway ? false : var.api_gateway_create_vpc_link_security_group
   oficina_app_api_gateway_http_routes = local.expose_oficina_app_api_gateway ? {
     "ANY /" = {
+      integration_uri      = module.oficina_app_private_nlb[0].listener_arn
+      connection_type      = "VPC_LINK"
+      authorization_type   = local.oficina_app_route_authorization_type
+      authorizer_key       = local.oficina_app_route_authorizer_key
+      authorization_scopes = local.oficina_app_route_authorization_scopes
+    }
+    "ANY /{proxy+}" = {
+      integration_uri      = module.oficina_app_private_nlb[0].listener_arn
+      connection_type      = "VPC_LINK"
+      authorization_type   = local.oficina_app_route_authorization_type
+      authorizer_key       = local.oficina_app_route_authorizer_key
+      authorization_scopes = local.oficina_app_route_authorization_scopes
+    }
+  } : {}
+  oficina_app_api_gateway_public_http_routes = local.expose_oficina_app_api_gateway && var.oficina_app_api_gateway_jwt_authorizer_enabled ? {
+    "GET /q/openapi" = {
       integration_uri = module.oficina_app_private_nlb[0].listener_arn
       connection_type = "VPC_LINK"
     }
-    "ANY /{proxy+}" = {
+    "GET /q/health" = {
+      integration_uri = module.oficina_app_private_nlb[0].listener_arn
+      connection_type = "VPC_LINK"
+    }
+    "GET /q/health/{proxy+}" = {
+      integration_uri = module.oficina_app_private_nlb[0].listener_arn
+      connection_type = "VPC_LINK"
+    }
+    "GET /ordem-de-servico/{id}/acompanhar-link" = {
+      integration_uri = module.oficina_app_private_nlb[0].listener_arn
+      connection_type = "VPC_LINK"
+    }
+    "GET /ordem-de-servico/{id}/aprovar-link" = {
+      integration_uri = module.oficina_app_private_nlb[0].listener_arn
+      connection_type = "VPC_LINK"
+    }
+    "POST /ordem-de-servico/{id}/aprovar-link" = {
+      integration_uri = module.oficina_app_private_nlb[0].listener_arn
+      connection_type = "VPC_LINK"
+    }
+    "GET /ordem-de-servico/{id}/recusar-link" = {
+      integration_uri = module.oficina_app_private_nlb[0].listener_arn
+      connection_type = "VPC_LINK"
+    }
+    "POST /ordem-de-servico/{id}/recusar-link" = {
       integration_uri = module.oficina_app_private_nlb[0].listener_arn
       connection_type = "VPC_LINK"
     }
   } : {}
-  api_gateway_http_routes = merge(local.oficina_app_api_gateway_http_routes, var.api_gateway_http_routes)
+  api_gateway_http_routes = merge(
+    local.oficina_app_api_gateway_http_routes,
+    local.oficina_app_api_gateway_public_http_routes,
+    var.api_gateway_http_routes
+  )
+  api_gateway_jwt_authorizers = merge(
+    var.api_gateway_jwt_authorizers,
+    var.oficina_app_api_gateway_jwt_authorizer_enabled ? {
+      (local.oficina_app_authorizer_key) = {
+        issuer   = var.oficina_app_api_gateway_jwt_issuer
+        audience = var.oficina_app_api_gateway_jwt_audience
+      }
+    } : {}
+  )
 }
 
 module "network" {
@@ -123,6 +180,7 @@ module "api_gateway" {
   vpc_link_security_group_ids          = local.api_gateway_vpc_link_security_group_ids
   create_vpc_link_security_group       = local.api_gateway_create_vpc_link_security_sg
   http_routes                          = local.api_gateway_http_routes
+  jwt_authorizers                      = local.api_gateway_jwt_authorizers
   lambda_routes                        = var.api_gateway_lambda_routes
 
   tags = {

@@ -13,6 +13,8 @@ DEPLOY_APP="${DEPLOY_APP:-true}"
 DEPLOY_KEYCLOAK="${DEPLOY_KEYCLOAK:-false}"
 REGENERATE_JWT="${REGENERATE_JWT:-true}"
 JWT_DIR="${JWT_DIR:-.tmp/jwt}"
+OFICINA_AUTH_ISSUER="${OFICINA_AUTH_ISSUER:-oficina-api}"
+OFICINA_AUTH_JWKS_URI="${OFICINA_AUTH_JWKS_URI:-file:/jwt/publicKey.pem}"
 DB_SECRET_NAME="oficina-database-env"
 APP_NAMESPACE="default"
 APP_ENV_DIR="k8s/overlays/lab"
@@ -31,6 +33,8 @@ Variaveis suportadas:
   DEPLOY_KEYCLOAK        true|false. Default: false
   REGENERATE_JWT         true|false. Default: true
   JWT_DIR                Diretorio das chaves JWT. Default: .tmp/jwt
+  OFICINA_AUTH_ISSUER    Issuer esperado pela aplicacao. Default: oficina-api
+  OFICINA_AUTH_JWKS_URI  JWKS/public key location. Default: file:/jwt/publicKey.pem
 EOF
 }
 
@@ -99,8 +103,15 @@ escape_sed_replacement() {
 
 render_overlay() {
   local escaped_image_ref
+  local escaped_auth_issuer
+  local escaped_auth_jwks_uri
   escaped_image_ref="$(escape_sed_replacement "${IMAGE_REF}")"
-  kubectl kustomize "${APP_ENV_DIR}" | sed "s|IMAGE_PLACEHOLDER|${escaped_image_ref}|g"
+  escaped_auth_issuer="$(escape_sed_replacement "${OFICINA_AUTH_ISSUER}")"
+  escaped_auth_jwks_uri="$(escape_sed_replacement "${OFICINA_AUTH_JWKS_URI}")"
+  kubectl kustomize "${APP_ENV_DIR}" |
+    sed "s|IMAGE_PLACEHOLDER|${escaped_image_ref}|g" |
+    sed "s|OFICINA_AUTH_ISSUER_PLACEHOLDER|${escaped_auth_issuer}|g" |
+    sed "s|OFICINA_AUTH_JWKS_URI_PLACEHOLDER|${escaped_auth_jwks_uri}|g"
 }
 
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
@@ -135,6 +146,8 @@ DEPLOY_APP=${DEPLOY_APP}
 DEPLOY_KEYCLOAK=${DEPLOY_KEYCLOAK}
 REGENERATE_JWT=${REGENERATE_JWT}
 JWT_DIR=${JWT_DIR}
+OFICINA_AUTH_ISSUER=${OFICINA_AUTH_ISSUER}
+OFICINA_AUTH_JWKS_URI=${OFICINA_AUTH_JWKS_URI}
 DB_SECRET_NAME=${DB_SECRET_NAME}
 EOF
 

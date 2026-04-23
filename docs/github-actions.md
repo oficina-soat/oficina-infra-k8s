@@ -88,6 +88,13 @@ Variaveis opcionais:
 - `API_GATEWAY_CREATE_VPC_LINK_SECURITY_GROUP`
 - `API_GATEWAY_HTTP_ROUTES`: objeto JSON compativel com `api_gateway_http_routes`
 - `API_GATEWAY_LAMBDA_ROUTES`: objeto JSON compativel com `api_gateway_lambda_routes`
+- `API_GATEWAY_JWT_AUTHORIZERS`: objeto JSON compativel com `api_gateway_jwt_authorizers`
+- `OFICINA_APP_API_GATEWAY_JWT_AUTHORIZER_ENABLED`: default `false`; quando `true`, protege as rotas padrao da aplicacao com JWT
+- `OFICINA_APP_API_GATEWAY_JWT_ISSUER`: issuer do authorizer; quando ausente, usa o endpoint publico do proprio HTTP API
+- `OFICINA_APP_API_GATEWAY_JWT_AUDIENCE`: lista JSON de audiences; default `["oficina-app"]`
+- `OFICINA_APP_API_GATEWAY_JWT_SCOPES`: lista JSON de scopes exigidos pelo authorizer; default `[]`
+- `OFICINA_AUTH_ISSUER`: issuer repassado ao ConfigMap da aplicacao; quando ausente no deploy integrado, e derivado do endpoint do API Gateway
+- `OFICINA_AUTH_JWKS_URI`: JWKS repassado ao ConfigMap da aplicacao; quando ausente no deploy integrado, e derivado de `OFICINA_AUTH_ISSUER`
 - `CREATE_TERRAFORM_SHARED_DATA_BUCKET`
 - `TERRAFORM_SHARED_DATA_BUCKET_NAME`
 - `TERRAFORM_SHARED_DATA_BUCKET_FORCE_DESTROY`

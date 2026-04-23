@@ -223,6 +223,31 @@ variable "expose_oficina_app_api_gateway" {
   default     = true
 }
 
+variable "oficina_app_api_gateway_jwt_authorizer_enabled" {
+  type        = bool
+  description = "Quando true, protege as rotas padrao do oficina-app com JWT authorizer nativo do HTTP API."
+  default     = false
+}
+
+variable "oficina_app_api_gateway_jwt_issuer" {
+  type        = string
+  description = "Issuer esperado para os access tokens do oficina-app. Se nulo, usa o endpoint publico do proprio HTTP API."
+  default     = null
+  nullable    = true
+}
+
+variable "oficina_app_api_gateway_jwt_audience" {
+  type        = list(string)
+  description = "Audiences aceitas pelo JWT authorizer padrao do oficina-app."
+  default     = ["oficina-app"]
+}
+
+variable "oficina_app_api_gateway_jwt_scopes" {
+  type        = list(string)
+  description = "Scopes exigidos nas rotas protegidas padrao do oficina-app."
+  default     = []
+}
+
 variable "oficina_app_private_listener_port" {
   type        = number
   description = "Porta privada do listener do NLB interno usado pelo API Gateway para acessar o oficina-app."
@@ -250,10 +275,22 @@ variable "api_gateway_http_routes" {
     integration_uri      = string
     integration_method   = optional(string, "ANY")
     authorization_type   = optional(string, "NONE")
+    authorizer_key       = optional(string)
+    authorization_scopes = optional(list(string), [])
     connection_type      = optional(string, "INTERNET")
     timeout_milliseconds = optional(number, 30000)
   }))
   description = "Rotas HTTP_PROXY do API Gateway. Permite, por exemplo, publicar a aplicacao principal atras do gateway sem depender dela no apply quando o mapa estiver vazio."
+  default     = {}
+}
+
+variable "api_gateway_jwt_authorizers" {
+  type = map(object({
+    issuer           = optional(string)
+    audience         = list(string)
+    identity_sources = optional(list(string), ["$request.header.Authorization"])
+  }))
+  description = "Authorizers JWT adicionais do API Gateway HTTP API."
   default     = {}
 }
 
@@ -262,6 +299,8 @@ variable "api_gateway_lambda_routes" {
     invoke_arn             = string
     function_name          = optional(string)
     authorization_type     = optional(string, "NONE")
+    authorizer_key         = optional(string)
+    authorization_scopes   = optional(list(string), [])
     payload_format_version = optional(string, "2.0")
     timeout_milliseconds   = optional(number, 30000)
   }))
