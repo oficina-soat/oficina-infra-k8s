@@ -27,9 +27,7 @@ jobs:
         uses: hashicorp/setup-terraform@v4
 
       - name: Setup kubectl
-        uses: azure/setup-kubectl@v4
-        with:
-          version: latest
+        uses: azure/setup-kubectl@v5
 
       - name: Validate repository
         shell: bash
@@ -115,9 +113,7 @@ jobs:
         uses: hashicorp/setup-terraform@v4
 
       - name: Setup kubectl
-        uses: azure/setup-kubectl@v4
-        with:
-          version: latest
+        uses: azure/setup-kubectl@v5
 
       - name: Validate workflow configuration
         shell: bash
