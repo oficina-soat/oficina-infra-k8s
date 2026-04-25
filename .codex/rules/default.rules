@@ -1,0 +1,34 @@
+# Terraform
+prefix_rule(pattern = ["terraform", "fmt", "-check", "-recursive", "terraform"], decision = "allow")
+prefix_rule(pattern = ["terraform", "-chdir=terraform/environments/lab", "init", "-backend=false"], decision = "allow")
+prefix_rule(pattern = ["terraform", "-chdir=terraform/environments/lab", "validate"], decision = "allow")
+prefix_rule(pattern = ["terraform", "-chdir=terraform/environments/lab", "plan"], decision = "allow")
+prefix_rule(pattern = ["terraform", "-chdir=terraform/environments/lab", "providers"], decision = "allow")
+
+# Kubernetes
+prefix_rule(pattern = ["kubectl", "kustomize", "k8s/overlays/lab"], decision = "allow")
+
+# Scripts locais de validacao e operacao
+prefix_rule(pattern = ["bash", "-n", "scripts/deploy-manual.sh"], decision = "allow")
+prefix_rule(pattern = ["bash", "-n", "scripts/cleanup-orphan-eks.sh"], decision = "allow")
+prefix_rule(pattern = ["bash", "-n", "scripts/start-port-forwards.sh"], decision = "allow")
+prefix_rule(pattern = ["bash", "-n", "scripts/ci-deploy.sh"], decision = "allow")
+prefix_rule(pattern = ["bash", "-n", "scripts/ci-terraform.sh"], decision = "allow")
+prefix_rule(pattern = ["./scripts/deploy-manual.sh"], decision = "allow")
+prefix_rule(pattern = ["./scripts/start-port-forwards.sh"], decision = "allow")
+prefix_rule(pattern = ["bash", "./scripts/ci-deploy.sh"], decision = "allow")
+prefix_rule(pattern = ["bash", "./scripts/ci-terraform.sh"], decision = "allow")
+
+# Git
+prefix_rule(pattern = ["git", "status"], decision = "allow")
+prefix_rule(pattern = ["git", "add"], decision = "allow")
+prefix_rule(pattern = ["git", "commit", "-m"], decision = "allow")
+
+# AWS validacao e leitura comum
+prefix_rule(pattern = ["aws", "sts", "get-caller-identity"], decision = "allow")
+prefix_rule(pattern = ["aws", "eks", "describe-cluster"], decision = "allow")
+prefix_rule(pattern = ["aws", "eks", "list-clusters"], decision = "allow")
+prefix_rule(pattern = ["aws", "ecr", "describe-repositories"], decision = "allow")
+prefix_rule(pattern = ["aws", "ecr", "describe-images"], decision = "allow")
+prefix_rule(pattern = ["aws", "apigatewayv2", "get-apis"], decision = "allow")
+prefix_rule(pattern = ["aws", "s3", "ls"], decision = "allow")
