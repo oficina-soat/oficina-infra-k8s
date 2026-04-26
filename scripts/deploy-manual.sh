@@ -15,6 +15,9 @@ REGENERATE_JWT="${REGENERATE_JWT:-false}"
 JWT_DIR="${JWT_DIR:-.tmp/jwt}"
 OFICINA_AUTH_ISSUER="${OFICINA_AUTH_ISSUER:-oficina-api}"
 OFICINA_AUTH_JWKS_URI="${OFICINA_AUTH_JWKS_URI:-file:/jwt/publicKey.pem}"
+OFICINA_AUTH_FORCE_LEGACY="${OFICINA_AUTH_FORCE_LEGACY:-false}"
+API_GATEWAY_ID="${API_GATEWAY_ID:-}"
+API_GATEWAY_NAME="${API_GATEWAY_NAME:-${EKS_CLUSTER_NAME:+${EKS_CLUSTER_NAME}-http-api}}"
 DB_SECRET_NAME="oficina-database-env"
 APP_NAMESPACE="default"
 APP_ENV_DIR="k8s/overlays/lab"
@@ -35,6 +38,9 @@ Variaveis suportadas:
   JWT_DIR                Diretorio das chaves JWT. Default: .tmp/jwt
   OFICINA_AUTH_ISSUER    Issuer esperado pela aplicacao. Default: oficina-api
   OFICINA_AUTH_JWKS_URI  JWKS/public key location. Default: file:/jwt/publicKey.pem
+  OFICINA_AUTH_FORCE_LEGACY true|false. Default: false
+  API_GATEWAY_ID         Opcional; ID do HTTP API usado para descobrir o issuer publico
+  API_GATEWAY_NAME       Opcional; default <EKS_CLUSTER_NAME>-http-api
 EOF
 }
 
@@ -56,6 +62,77 @@ require_non_empty() {
 
 log() {
   printf '\n[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
+}
+
+normalize_url_like_value() {
+  local value="$1"
+
+  if [[ "${value}" == http://* || "${value}" == https://* ]]; then
+    printf '%s' "${value%/}"
+    return
+  fi
+
+  printf '%s' "${value}"
+}
+
+resolve_api_gateway_id() {
+  if [[ -n "${API_GATEWAY_ID}" ]]; then
+    printf '%s' "${API_GATEWAY_ID}"
+    return
+  fi
+
+  if [[ -z "${API_GATEWAY_NAME}" ]] || ! command -v aws >/dev/null 2>&1; then
+    return
+  fi
+
+  aws --region "${AWS_REGION}" apigatewayv2 get-apis \
+    --query "Items[?Name=='${API_GATEWAY_NAME}'].ApiId | [0]" \
+    --output text 2>/dev/null | sed '/^None$/d'
+}
+
+api_gateway_endpoint() {
+  local api_id="$1"
+
+  aws --region "${AWS_REGION}" apigatewayv2 get-api \
+    --api-id "${api_id}" \
+    --query 'ApiEndpoint' \
+    --output text 2>/dev/null | sed '/^None$/d'
+}
+
+prepare_auth_config() {
+  local api_id=""
+  local should_migrate_legacy="false"
+  local legacy_auth_issuer="${OFICINA_AUTH_ISSUER}"
+  local legacy_auth_jwks_uri="${OFICINA_AUTH_JWKS_URI}"
+
+  OFICINA_AUTH_ISSUER="$(normalize_url_like_value "${OFICINA_AUTH_ISSUER}")"
+  OFICINA_AUTH_JWKS_URI="$(normalize_url_like_value "${OFICINA_AUTH_JWKS_URI}")"
+
+  if [[ "${OFICINA_AUTH_FORCE_LEGACY}" != "true" && "${OFICINA_AUTH_ISSUER}" == "oficina-api" ]] \
+    && [[ -z "${OFICINA_AUTH_JWKS_URI}" || "${OFICINA_AUTH_JWKS_URI}" == "file:/jwt/publicKey.pem" ]]; then
+    should_migrate_legacy="true"
+    OFICINA_AUTH_ISSUER=""
+    OFICINA_AUTH_JWKS_URI=""
+  fi
+
+  if [[ -z "${OFICINA_AUTH_ISSUER}" ]]; then
+    api_id="$(resolve_api_gateway_id || true)"
+    if [[ -n "${api_id}" ]]; then
+      OFICINA_AUTH_ISSUER="$(normalize_url_like_value "$(api_gateway_endpoint "${api_id}")")"
+    fi
+  fi
+
+  if [[ -z "${OFICINA_AUTH_JWKS_URI}" && ( "${OFICINA_AUTH_ISSUER}" == http://* || "${OFICINA_AUTH_ISSUER}" == https://* ) ]]; then
+    OFICINA_AUTH_JWKS_URI="${OFICINA_AUTH_ISSUER}/.well-known/jwks.json"
+  fi
+
+  if [[ "${should_migrate_legacy}" == "true" && -n "${OFICINA_AUTH_ISSUER}" && -n "${OFICINA_AUTH_JWKS_URI}" ]]; then
+    log "Migrando configuracao legada de JWT para o issuer publico ${OFICINA_AUTH_ISSUER}."
+  elif [[ "${should_migrate_legacy}" == "true" ]]; then
+    OFICINA_AUTH_ISSUER="${legacy_auth_issuer}"
+    OFICINA_AUTH_JWKS_URI="${legacy_auth_jwks_uri}"
+    log "API Gateway nao encontrado; mantendo configuracao legada de JWT."
+  fi
 }
 
 secret_exists() {
@@ -122,6 +199,7 @@ fi
 require_cmd kubectl
 require_cmd openssl
 require_cmd sed
+prepare_auth_config
 
 if [[ "${UPDATE_KUBECONFIG}" == "true" ]]; then
   require_cmd aws
@@ -148,6 +226,7 @@ REGENERATE_JWT=${REGENERATE_JWT}
 JWT_DIR=${JWT_DIR}
 OFICINA_AUTH_ISSUER=${OFICINA_AUTH_ISSUER}
 OFICINA_AUTH_JWKS_URI=${OFICINA_AUTH_JWKS_URI}
+OFICINA_AUTH_FORCE_LEGACY=${OFICINA_AUTH_FORCE_LEGACY}
 DB_SECRET_NAME=${DB_SECRET_NAME}
 EOF
 

@@ -27,6 +27,7 @@ REGENERATE_JWT="${REGENERATE_JWT:-false}"
 ROTATE_JWT_SECRET="${ROTATE_JWT_SECRET:-false}"
 OFICINA_AUTH_ISSUER="${OFICINA_AUTH_ISSUER:-}"
 OFICINA_AUTH_JWKS_URI="${OFICINA_AUTH_JWKS_URI:-}"
+OFICINA_AUTH_FORCE_LEGACY="${OFICINA_AUTH_FORCE_LEGACY:-false}"
 db_env_file=""
 ecr_repository_url_file=""
 jwt_tmp_dir=""
@@ -89,6 +90,7 @@ normalize_optional_envs() {
   unset_if_empty "ROTATE_JWT_SECRET"
   unset_if_empty "OFICINA_AUTH_ISSUER"
   unset_if_empty "OFICINA_AUTH_JWKS_URI"
+  unset_if_empty "OFICINA_AUTH_FORCE_LEGACY"
 }
 
 is_truthy() {
@@ -505,6 +507,16 @@ prepare_jwt_secret_from_secrets_manager() {
 
 prepare_app_auth_config_from_terraform() {
   local api_gateway_endpoint=""
+  local should_migrate_legacy="false"
+  local legacy_auth_issuer="${OFICINA_AUTH_ISSUER:-}"
+  local legacy_auth_jwks_uri="${OFICINA_AUTH_JWKS_URI:-}"
+
+  if [[ "${OFICINA_AUTH_FORCE_LEGACY}" != "true" && "${OFICINA_AUTH_ISSUER:-}" == "oficina-api" ]] \
+    && [[ -z "${OFICINA_AUTH_JWKS_URI:-}" || "${OFICINA_AUTH_JWKS_URI:-}" == "file:/jwt/publicKey.pem" ]]; then
+    should_migrate_legacy="true"
+    OFICINA_AUTH_ISSUER=""
+    OFICINA_AUTH_JWKS_URI=""
+  fi
 
   if [[ -z "${OFICINA_AUTH_ISSUER:-}" ]]; then
     if api_gateway_endpoint="$(terraform -chdir="${TERRAFORM_DIR}" output -raw api_gateway_endpoint 2>/dev/null)" && [[ -n "${api_gateway_endpoint}" && "${api_gateway_endpoint}" != "null" ]]; then
@@ -514,6 +526,14 @@ prepare_app_auth_config_from_terraform() {
 
   if [[ -z "${OFICINA_AUTH_JWKS_URI:-}" && -n "${OFICINA_AUTH_ISSUER:-}" ]]; then
     OFICINA_AUTH_JWKS_URI="${OFICINA_AUTH_ISSUER%/}/.well-known/jwks.json"
+  fi
+
+  if [[ "${should_migrate_legacy}" == "true" && -n "${OFICINA_AUTH_ISSUER:-}" && -n "${OFICINA_AUTH_JWKS_URI:-}" ]]; then
+    log "Migrando configuracao legada de JWT para o issuer publico ${OFICINA_AUTH_ISSUER}."
+  elif [[ "${should_migrate_legacy}" == "true" ]]; then
+    OFICINA_AUTH_ISSUER="${legacy_auth_issuer}"
+    OFICINA_AUTH_JWKS_URI="${legacy_auth_jwks_uri}"
+    log "API Gateway nao encontrado; mantendo configuracao legada de JWT."
   fi
 
   export OFICINA_AUTH_ISSUER
@@ -656,4 +676,5 @@ DEPLOY_KEYCLOAK="${DEPLOY_KEYCLOAK}" \
 REGENERATE_JWT="${REGENERATE_JWT}" \
 OFICINA_AUTH_ISSUER="${OFICINA_AUTH_ISSUER:-}" \
 OFICINA_AUTH_JWKS_URI="${OFICINA_AUTH_JWKS_URI:-}" \
+OFICINA_AUTH_FORCE_LEGACY="${OFICINA_AUTH_FORCE_LEGACY:-false}" \
 bash "${REPO_ROOT}/scripts/deploy-manual.sh"
