@@ -62,6 +62,7 @@ jobs:
       ROTATE_JWT_SECRET: ${{ vars.ROTATE_JWT_SECRET || 'false' }}
       OFICINA_AUTH_ISSUER: ${{ vars.OFICINA_AUTH_ISSUER }}
       OFICINA_AUTH_JWKS_URI: ${{ vars.OFICINA_AUTH_JWKS_URI }}
+      OFICINA_AUTH_FORCE_LEGACY: ${{ vars.OFICINA_AUTH_FORCE_LEGACY || 'false' }}
       FETCH_RUNTIME_SECRETS_FROM_AWS: ${{ vars.FETCH_RUNTIME_SECRETS_FROM_AWS || 'true' }}
       K8S_DATABASE_SECRET_ID: ${{ vars.K8S_DATABASE_SECRET_ID || 'oficina/lab/database/app' }}
       K8S_JWT_SECRET_ID: ${{ vars.K8S_JWT_SECRET_ID || 'oficina/lab/jwt' }}
