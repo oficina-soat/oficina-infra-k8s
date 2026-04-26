@@ -107,3 +107,28 @@ output "oficina_app_node_port" {
   description = "NodePort do Service Kubernetes oficina-app usado como target do NLB interno."
   value       = var.oficina_app_node_port
 }
+
+output "mailhog_smtp_private_nlb_dns_name" {
+  description = "DNS privado do NLB interno usado pela notificacao-lambda para acessar o SMTP do MailHog."
+  value       = try(module.mailhog_smtp_private_nlb[0].load_balancer_dns_name, null)
+}
+
+output "mailhog_smtp_private_listener_port" {
+  description = "Porta privada do listener do NLB interno usado para o SMTP do MailHog."
+  value       = var.mailhog_smtp_private_listener_port
+}
+
+output "mailhog_smtp_node_port" {
+  description = "NodePort do Service Kubernetes mailhog-smtp-private usado como target do NLB interno."
+  value       = var.mailhog_smtp_node_port
+}
+
+output "notificacao_lambda_security_group_name" {
+  description = "Nome do security group dedicado da notificacao-lambda para acesso privado na VPC."
+  value       = try(aws_security_group.notificacao_lambda[0].name, null)
+}
+
+output "notificacao_lambda_security_group_id" {
+  description = "ID do security group dedicado da notificacao-lambda para acesso privado na VPC."
+  value       = try(aws_security_group.notificacao_lambda[0].id, null)
+}

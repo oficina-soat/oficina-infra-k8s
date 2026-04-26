@@ -13,6 +13,9 @@ locals {
   oficina_app_route_authorizer_key        = var.oficina_app_api_gateway_jwt_authorizer_enabled ? local.oficina_app_authorizer_key : null
   oficina_app_route_authorization_scopes  = var.oficina_app_api_gateway_jwt_authorizer_enabled ? var.oficina_app_api_gateway_jwt_scopes : []
   oficina_app_private_nlb_name            = substr("${var.cluster_name}-oficina-app", 0, 29)
+  expose_mailhog_smtp_private_nlb         = var.expose_mailhog_smtp_private_nlb
+  mailhog_smtp_private_nlb_name           = substr("${var.cluster_name}-mailhog-smtp", 0, 29)
+  notificacao_lambda_security_group_name  = coalesce(var.notificacao_lambda_security_group_name, "${var.cluster_name}-notificacao-lambda")
   api_gateway_vpc_link_security_group_ids = local.expose_oficina_app_api_gateway ? concat(var.api_gateway_vpc_link_security_group_ids, [aws_security_group.oficina_app_api_gateway_vpc_link[0].id]) : var.api_gateway_vpc_link_security_group_ids
   api_gateway_create_vpc_link_security_sg = local.expose_oficina_app_api_gateway ? false : var.api_gateway_create_vpc_link_security_group
   oficina_app_api_gateway_http_routes = local.expose_oficina_app_api_gateway ? {
@@ -145,6 +148,28 @@ resource "aws_security_group" "oficina_app_api_gateway_vpc_link" {
   }
 }
 
+resource "aws_security_group" "notificacao_lambda" {
+  count = local.expose_mailhog_smtp_private_nlb ? 1 : 0
+
+  name        = local.notificacao_lambda_security_group_name
+  description = "Security group dedicado da notificacao-lambda no ambiente lab"
+  vpc_id      = module.network.vpc_id
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Environment = "lab"
+    ManagedBy   = "terraform"
+    Name        = local.notificacao_lambda_security_group_name
+    Project     = "oficina"
+  }
+}
+
 module "oficina_app_private_nlb" {
   count  = local.expose_oficina_app_api_gateway ? 1 : 0
   source = "../../modules/internal_nodeport_nlb"
@@ -156,6 +181,26 @@ module "oficina_app_private_nlb" {
   target_node_port                  = var.oficina_app_node_port
   target_autoscaling_group_name     = module.eks.node_group_autoscaling_group_name
   allowed_source_security_group_ids = local.api_gateway_vpc_link_security_group_ids
+  target_security_group_ids         = [module.eks.cluster_security_group_id]
+
+  tags = {
+    Environment = "lab"
+    ManagedBy   = "terraform"
+    Project     = "oficina"
+  }
+}
+
+module "mailhog_smtp_private_nlb" {
+  count  = local.expose_mailhog_smtp_private_nlb ? 1 : 0
+  source = "../../modules/internal_nodeport_nlb"
+
+  name                              = local.mailhog_smtp_private_nlb_name
+  vpc_id                            = module.network.vpc_id
+  subnet_ids                        = module.network.public_subnet_ids
+  listener_port                     = var.mailhog_smtp_private_listener_port
+  target_node_port                  = var.mailhog_smtp_node_port
+  target_autoscaling_group_name     = module.eks.node_group_autoscaling_group_name
+  allowed_source_security_group_ids = [aws_security_group.notificacao_lambda[0].id]
   target_security_group_ids         = [module.eks.cluster_security_group_id]
 
   tags = {

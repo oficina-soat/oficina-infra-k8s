@@ -36,6 +36,11 @@ create_ecr_repository = true
 # Kubernetes oficina-app. Para desativar essa rota padrao:
 # expose_oficina_app_api_gateway = false
 #
+# O SMTP do MailHog tambem e exposto por default em um NLB interno, usando
+# o NodePort 31025 do Service mailhog-smtp-private e um SG dedicado para a
+# notificacao-lambda. Para desativar esse acesso privado:
+# expose_mailhog_smtp_private_nlb = false
+#
 # Exemplo para publicar a aplicacao principal por URL publica:
 # api_gateway_http_routes = {
 #   "ANY /app" = {

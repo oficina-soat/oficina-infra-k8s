@@ -104,6 +104,10 @@ Variáveis principais:
 - `expose_oficina_app_api_gateway`: publica o `oficina-app` na raiz do HTTP API usando `VPC_LINK`, NLB interno e o `NodePort` do Service Kubernetes. Padrão: `true`
 - `oficina_app_node_port`: `NodePort` fixo usado como target do NLB interno. Padrão: `30080`, alinhado ao manifesto em `k8s/base/oficina-app`
 - `oficina_app_private_listener_port`: porta privada do listener do NLB interno usado pelo API Gateway. Padrão: `8080`
+- `expose_mailhog_smtp_private_nlb`: publica o SMTP do MailHog por NLB interno para a `notificacao-lambda`. Padrão: `true`
+- `mailhog_smtp_node_port`: `NodePort` fixo do Service `mailhog-smtp-private`. Padrão: `31025`
+- `mailhog_smtp_private_listener_port`: porta privada do listener do NLB interno do SMTP do MailHog. Padrão: `1025`
+- `notificacao_lambda_security_group_name`: nome do SG dedicado da `notificacao-lambda`. Se omitido, usa `<cluster_name>-notificacao-lambda`
 - `create_terraform_shared_data_bucket`, `terraform_shared_data_bucket_name` e `terraform_shared_data_bucket_force_destroy`: bucket S3 usado pelos dados compartilhados do Terraform
 
 ## Aplicação da infraestrutura
@@ -126,6 +130,11 @@ Saídas principais:
 - `oficina_app_private_nlb_dns_name`
 - `oficina_app_private_nlb_listener_arn`
 - `oficina_app_node_port`
+- `mailhog_smtp_private_nlb_dns_name`
+- `mailhog_smtp_private_listener_port`
+- `mailhog_smtp_node_port`
+- `notificacao_lambda_security_group_name`
+- `notificacao_lambda_security_group_id`
 - `terraform_shared_data_bucket_name`
 - `vpc_id`
 - `public_subnet_ids`
@@ -140,6 +149,8 @@ Por padrão, o ambiente `lab` publica o `oficina-app` diretamente na raiz do gat
 - `ANY /{proxy+}`
 
 Essa publicação usa integração privada `VPC_LINK`. O Terraform cria um NLB interno com listener TCP na porta `8080`, registra o Auto Scaling Group do node group EKS em um target group na porta `30080` e configura o HTTP API para usar o listener ARN como `integration_uri`. No Kubernetes, o Service `oficina-app` permanece sem `LoadBalancer` público e usa `type: NodePort` com `nodePort: 30080`, encaminhando para `targetPort: 8080` nos pods.
+
+Para o MailHog, o ambiente `lab` também cria um NLB interno separado para SMTP. O Kubernetes expõe o Service `mailhog-smtp-private` em `NodePort 31025`, e o Terraform publica esse NodePort em um listener TCP privado na porta `1025`, liberado apenas para o security group dedicado da `notificacao-lambda`. Isso mantém o MailHog inacessível pela internet e evita abrir o SMTP para toda a VPC.
 
 O gateway ainda não exige que a aplicação esteja pronta no momento do `apply`: os recursos AWS são criados, mas as chamadas só retornam sucesso depois que o overlay Kubernetes do `oficina-app` estiver aplicado e com endpoints prontos. Para voltar ao comportamento de gateway sem rota padrão, defina:
 
