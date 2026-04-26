@@ -86,6 +86,10 @@ Variaveis opcionais:
 - `API_GATEWAY_VPC_LINK_SUBNET_IDS`: lista JSON de subnets
 - `API_GATEWAY_VPC_LINK_SECURITY_GROUP_IDS`: lista JSON de security groups
 - `API_GATEWAY_CREATE_VPC_LINK_SECURITY_GROUP`
+- `EXPOSE_MAILHOG_SMTP_PRIVATE_NLB`: default `true`; cria o NLB interno do SMTP do MailHog para a `notificacao-lambda`
+- `MAILHOG_SMTP_NODE_PORT`: default `31025`; deve bater com o manifesto Kubernetes `mailhog-smtp-private`
+- `MAILHOG_SMTP_PRIVATE_LISTENER_PORT`: default `1025`
+- `NOTIFICACAO_LAMBDA_SECURITY_GROUP_NAME`: nome do SG dedicado da `notificacao-lambda`; default `<EKS_CLUSTER_NAME>-notificacao-lambda`
 - `API_GATEWAY_HTTP_ROUTES`: objeto JSON compativel com `api_gateway_http_routes`
 - `API_GATEWAY_LAMBDA_ROUTES`: objeto JSON compativel com `api_gateway_lambda_routes`
 - `API_GATEWAY_JWT_AUTHORIZERS`: objeto JSON compativel com `api_gateway_jwt_authorizers`

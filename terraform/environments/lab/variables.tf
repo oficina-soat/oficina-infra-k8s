@@ -270,6 +270,41 @@ variable "oficina_app_node_port" {
   }
 }
 
+variable "expose_mailhog_smtp_private_nlb" {
+  type        = bool
+  description = "Quando true, publica o SMTP do MailHog por NLB interno para uso da notificacao-lambda na VPC."
+  default     = true
+}
+
+variable "mailhog_smtp_private_listener_port" {
+  type        = number
+  description = "Porta privada do listener do NLB interno usado para o SMTP do MailHog."
+  default     = 1025
+
+  validation {
+    condition     = var.mailhog_smtp_private_listener_port >= 1 && var.mailhog_smtp_private_listener_port <= 65535
+    error_message = "mailhog_smtp_private_listener_port deve estar entre 1 e 65535."
+  }
+}
+
+variable "mailhog_smtp_node_port" {
+  type        = number
+  description = "NodePort fixo do Service Kubernetes mailhog-smtp-private. Deve corresponder ao manifesto em k8s/components/mailhog."
+  default     = 31025
+
+  validation {
+    condition     = var.mailhog_smtp_node_port >= 30000 && var.mailhog_smtp_node_port <= 32767
+    error_message = "mailhog_smtp_node_port deve estar entre 30000 e 32767."
+  }
+}
+
+variable "notificacao_lambda_security_group_name" {
+  type        = string
+  description = "Nome do security group dedicado da notificacao-lambda para acessar recursos privados como o MailHog."
+  default     = null
+  nullable    = true
+}
+
 variable "api_gateway_http_routes" {
   type = map(object({
     integration_uri      = string

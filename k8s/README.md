@@ -18,6 +18,8 @@ O ponto de entrada do laboratório é `k8s/overlays/lab`.
 
 O Service `oficina-app` usa `type: NodePort` com `nodePort: 30080`. Esse valor é consumido pelo Terraform do ambiente `lab` para registrar os nodes do EKS em um NLB interno acessado pelo API Gateway via `VPC_LINK`; ele não cria um `LoadBalancer` Kubernetes público.
 
+O componente `mailhog` mantém um Service `ClusterIP` para uso interno do cluster e adiciona o Service `mailhog-smtp-private` com `type: NodePort` e `nodePort: 31025`. Esse NodePort não é público por si só; ele serve como target de um NLB interno dedicado ao SMTP do MailHog para acesso privado da `notificacao-lambda`.
+
 Renderização:
 
 ```bash
