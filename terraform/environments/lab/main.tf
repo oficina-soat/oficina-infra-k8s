@@ -9,9 +9,11 @@ locals {
   api_gateway_name                        = coalesce(var.api_gateway_name, "${var.cluster_name}-http-api")
   expose_oficina_app_api_gateway          = var.create_api_gateway && var.expose_oficina_app_api_gateway
   oficina_app_authorizer_key              = "oficina-app"
+  oficina_app_jwt_audience                = length(var.oficina_app_api_gateway_jwt_audience) > 0 ? var.oficina_app_api_gateway_jwt_audience : ["oficina-app"]
+  oficina_app_jwt_scopes                  = length(var.oficina_app_api_gateway_jwt_scopes) > 0 ? var.oficina_app_api_gateway_jwt_scopes : ["oficina-app"]
   oficina_app_route_authorization_type    = var.oficina_app_api_gateway_jwt_authorizer_enabled ? "JWT" : "NONE"
   oficina_app_route_authorizer_key        = var.oficina_app_api_gateway_jwt_authorizer_enabled ? local.oficina_app_authorizer_key : null
-  oficina_app_route_authorization_scopes  = var.oficina_app_api_gateway_jwt_authorizer_enabled ? var.oficina_app_api_gateway_jwt_scopes : []
+  oficina_app_route_authorization_scopes  = var.oficina_app_api_gateway_jwt_authorizer_enabled ? local.oficina_app_jwt_scopes : []
   oficina_app_private_nlb_name            = substr("${var.cluster_name}-oficina-app", 0, 29)
   expose_mailhog_smtp_private_nlb         = var.expose_mailhog_smtp_private_nlb
   mailhog_smtp_private_nlb_name           = substr("${var.cluster_name}-mailhog-smtp", 0, 29)
@@ -35,15 +37,15 @@ locals {
     }
   } : {}
   oficina_app_api_gateway_public_http_routes = local.expose_oficina_app_api_gateway && var.oficina_app_api_gateway_jwt_authorizer_enabled ? {
-    "GET /q/openapi" = {
+    "GET /q/swagger-ui" = {
       integration_uri = module.oficina_app_private_nlb[0].listener_arn
       connection_type = "VPC_LINK"
     }
-    "GET /q/health" = {
+    "GET /q/swagger-ui/" = {
       integration_uri = module.oficina_app_private_nlb[0].listener_arn
       connection_type = "VPC_LINK"
     }
-    "GET /q/health/{proxy+}" = {
+    "GET /q/swagger-ui/{proxy+}" = {
       integration_uri = module.oficina_app_private_nlb[0].listener_arn
       connection_type = "VPC_LINK"
     }
@@ -78,7 +80,7 @@ locals {
     var.oficina_app_api_gateway_jwt_authorizer_enabled ? {
       (local.oficina_app_authorizer_key) = {
         issuer   = var.oficina_app_api_gateway_jwt_issuer
-        audience = var.oficina_app_api_gateway_jwt_audience
+        audience = local.oficina_app_jwt_audience
       }
     } : {}
   )

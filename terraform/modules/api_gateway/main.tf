@@ -164,6 +164,9 @@ resource "aws_apigatewayv2_stage" "this" {
         status                  = "$context.status"
         protocol                = "$context.protocol"
         responseLength          = "$context.responseLength"
+        errorMessage            = "$context.error.message"
+        errorResponseType       = "$context.error.responseType"
+        authorizerError         = "$context.authorizer.error"
         integrationErrorMessage = "$context.integrationErrorMessage"
       })
     }

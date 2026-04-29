@@ -96,10 +96,12 @@ Variaveis opcionais:
 - `OFICINA_APP_API_GATEWAY_JWT_AUTHORIZER_ENABLED`: default `false`; quando `true`, protege as rotas padrao da aplicacao com JWT
 - `OFICINA_APP_API_GATEWAY_JWT_ISSUER`: issuer do authorizer; quando ausente, usa o endpoint publico do proprio HTTP API
 - `OFICINA_APP_API_GATEWAY_JWT_AUDIENCE`: lista JSON de audiences; default `["oficina-app"]`
-- `OFICINA_APP_API_GATEWAY_JWT_SCOPES`: lista JSON de scopes exigidos pelo authorizer; default `[]`
+- `OFICINA_APP_API_GATEWAY_JWT_SCOPES`: lista JSON de scopes exigidos pelo authorizer; default `["oficina-app"]`
 - `OFICINA_AUTH_ISSUER`: issuer repassado ao ConfigMap da aplicacao; quando ausente no deploy integrado, e derivado do endpoint do API Gateway
 - `OFICINA_AUTH_JWKS_URI`: JWKS repassado ao ConfigMap da aplicacao; quando ausente no deploy integrado, e derivado de `OFICINA_AUTH_ISSUER`
 - `OFICINA_AUTH_FORCE_LEGACY`: default `false`; quando `true`, preserva explicitamente o modo legado `oficina-api` + `file:/jwt/publicKey.pem`
+
+Quando `OFICINA_APP_API_GATEWAY_JWT_AUTHORIZER_ENABLED=true`, o workflow passa a aplicar no `oficina-app` um JWT authorizer com issuer do gateway atual (ou override explicito), audience `["oficina-app"]` e scope `["oficina-app"]` por default. Nesse modo, o gateway protege a aplicacao por default e deixa publicos apenas `/q/swagger-ui`, `/q/swagger-ui/`, `/q/swagger-ui/*` e as rotas vigentes de magic link.
 - `CREATE_TERRAFORM_SHARED_DATA_BUCKET`
 - `TERRAFORM_SHARED_DATA_BUCKET_NAME`
 - `TERRAFORM_SHARED_DATA_BUCKET_FORCE_DESTROY`

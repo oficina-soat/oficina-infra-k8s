@@ -102,8 +102,8 @@ jobs:
       TF_VAR_api_gateway_create_vpc_link_security_group: ${{ vars.API_GATEWAY_CREATE_VPC_LINK_SECURITY_GROUP || 'true' }}
       TF_VAR_oficina_app_api_gateway_jwt_authorizer_enabled: ${{ vars.OFICINA_APP_API_GATEWAY_JWT_AUTHORIZER_ENABLED || 'false' }}
       TF_VAR_oficina_app_api_gateway_jwt_issuer: ${{ vars.OFICINA_APP_API_GATEWAY_JWT_ISSUER }}
-      TF_VAR_oficina_app_api_gateway_jwt_audience: ${{ vars.OFICINA_APP_API_GATEWAY_JWT_AUDIENCE }}
-      TF_VAR_oficina_app_api_gateway_jwt_scopes: ${{ vars.OFICINA_APP_API_GATEWAY_JWT_SCOPES }}
+      TF_VAR_oficina_app_api_gateway_jwt_audience: ${{ vars.OFICINA_APP_API_GATEWAY_JWT_AUDIENCE || '["oficina-app"]' }}
+      TF_VAR_oficina_app_api_gateway_jwt_scopes: ${{ vars.OFICINA_APP_API_GATEWAY_JWT_SCOPES || '["oficina-app"]' }}
       TF_VAR_expose_mailhog_smtp_private_nlb: ${{ vars.EXPOSE_MAILHOG_SMTP_PRIVATE_NLB || 'true' }}
       TF_VAR_mailhog_smtp_node_port: ${{ vars.MAILHOG_SMTP_NODE_PORT || '31025' }}
       TF_VAR_mailhog_smtp_private_listener_port: ${{ vars.MAILHOG_SMTP_PRIVATE_LISTENER_PORT || '1025' }}

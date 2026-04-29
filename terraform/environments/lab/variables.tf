@@ -240,12 +240,22 @@ variable "oficina_app_api_gateway_jwt_audience" {
   type        = list(string)
   description = "Audiences aceitas pelo JWT authorizer padrao do oficina-app."
   default     = ["oficina-app"]
+
+  validation {
+    condition     = length(var.oficina_app_api_gateway_jwt_audience) == 0 || var.oficina_app_api_gateway_jwt_audience == ["oficina-app"]
+    error_message = "oficina_app_api_gateway_jwt_audience deve permanecer alinhado ao contrato da suite: [\"oficina-app\"]."
+  }
 }
 
 variable "oficina_app_api_gateway_jwt_scopes" {
   type        = list(string)
   description = "Scopes exigidos nas rotas protegidas padrao do oficina-app."
-  default     = []
+  default     = ["oficina-app"]
+
+  validation {
+    condition     = alltrue([for scope in var.oficina_app_api_gateway_jwt_scopes : trim(scope) != ""])
+    error_message = "oficina_app_api_gateway_jwt_scopes nao pode conter scopes vazios."
+  }
 }
 
 variable "oficina_app_private_listener_port" {
