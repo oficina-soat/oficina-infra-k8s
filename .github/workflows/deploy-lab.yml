@@ -170,6 +170,7 @@ jobs:
           BASE_BRANCH: main
         run: |
           git fetch origin "${BASE_BRANCH}" "${HEAD_BRANCH}"
+          head_ref="${GITHUB_REPOSITORY_OWNER}:${HEAD_BRANCH}"
 
           if git diff --quiet "origin/${BASE_BRANCH}...origin/${HEAD_BRANCH}" -- .; then
             echo "Branch ${HEAD_BRANCH} nao possui diferencas de conteudo em relacao a ${BASE_BRANCH}; PR nao sera criado."
@@ -178,8 +179,9 @@ jobs:
 
           existing_pr_url="$(
             gh pr list \
+              --repo "${GITHUB_REPOSITORY}" \
               --base "${BASE_BRANCH}" \
-              --head "${HEAD_BRANCH}" \
+              --head "${head_ref}" \
               --state open \
               --json url \
               --jq '.[0].url // empty'
@@ -190,8 +192,38 @@ jobs:
             exit 0
           fi
 
-          gh pr create \
-            --base "${BASE_BRANCH}" \
-            --head "${HEAD_BRANCH}" \
-            --title "chore: promover develop para main" \
-            --body "PR aberto automaticamente apos as validacoes do workflow Deploy Lab passarem."
+          set +e
+          create_output="$(
+            gh pr create \
+              --repo "${GITHUB_REPOSITORY}" \
+              --base "${BASE_BRANCH}" \
+              --head "${head_ref}" \
+              --title "chore: promover develop para main" \
+              --body "PR aberto automaticamente apos as validacoes do workflow Deploy Lab passarem." \
+              2>&1
+          )"
+          create_status=$?
+          set -e
+
+          if [[ ${create_status} -eq 0 ]]; then
+            echo "${create_output}"
+            exit 0
+          fi
+
+          existing_pr_url="$(
+            gh pr list \
+              --repo "${GITHUB_REPOSITORY}" \
+              --base "${BASE_BRANCH}" \
+              --head "${head_ref}" \
+              --state open \
+              --json url \
+              --jq '.[0].url // empty'
+          )"
+
+          if [[ -n "${existing_pr_url}" ]]; then
+            echo "Pull request ja existente: ${existing_pr_url}"
+            exit 0
+          fi
+
+          echo "${create_output}" >&2
+          exit "${create_status}"
