@@ -9,6 +9,7 @@ O projeto provisiona a base da nuvem e publica a aplicação com:
 - repositório Amazon ECR opcional para a imagem da aplicação
 - API Gateway HTTP API com logs e throttling, pronto para expor app HTTP e Lambdas de forma opcional
 - manifests Kubernetes organizados com `kustomize` em `base`, `components`, `addons` e `overlays`
+- telemetria vendor-neutral preparada com logs JSON, OpenTelemetry e probes HTTP no `oficina-app`
 - workflow de GitHub Actions para validar `develop`, promover mudanças para `main` via PR e fazer deploy completo após merge em `main`
 - workflow manual de GitHub Actions para desativar somente o EKS sem remover VPC, ECR, API Gateway e state remoto
 
@@ -41,6 +42,7 @@ O repositório segue um layout em diretórios:
 - `k8s/addons/keycloak`: addon opcional para demonstração
 - `k8s/overlays/lab`: composição final do ambiente Kubernetes
 - `scripts/`: automações operacionais e de CI
+- `docs/telemetria.md`: convenção de telemetria vendor-neutral da suíte
 
 ## Estado do Terraform
 
@@ -233,6 +235,18 @@ curl -i "${API_URL}/q/health"
 curl -i "${API_URL}/ordem-de-servico/2b2276e8-fa72-4f4c-a3b0-2c5b1bf427ef/acompanhar-link?actionToken=<magic-link>"
 curl -i -H "Authorization: Bearer <jwt-valido>" "${API_URL}/ordem-de-servico"
 ```
+
+## Observabilidade vendor-neutral
+
+O laboratório já deixa o `oficina-app` pronto para uma futura escolha de backend observability sem acoplar o cluster a um vendor nesta etapa.
+
+- logs estruturados em JSON no app
+- OpenTelemetry habilitado para tracing e propagação de contexto
+- métricas de negócio e técnicas expostas pelo app
+- probes Kubernetes em `GET /q/health/live` e `GET /q/health/ready`
+- env vars OTEL e `OFICINA_OBSERVABILITY_*` padronizadas no `ConfigMap`
+
+Contrato consolidado: [docs/telemetria.md](docs/telemetria.md)
 
 ## Deploy da aplicação
 

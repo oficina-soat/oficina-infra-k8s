@@ -100,6 +100,17 @@ Variaveis opcionais:
 - `OFICINA_AUTH_ISSUER`: issuer repassado ao ConfigMap da aplicacao; quando ausente no deploy integrado, e derivado do endpoint do API Gateway
 - `OFICINA_AUTH_JWKS_URI`: JWKS repassado ao ConfigMap da aplicacao; quando ausente no deploy integrado, e derivado de `OFICINA_AUTH_ISSUER`
 - `OFICINA_AUTH_FORCE_LEGACY`: default `false`; quando `true`, preserva explicitamente o modo legado `oficina-api` + `file:/jwt/publicKey.pem`
+- `OFICINA_OBSERVABILITY_ENABLED`: default `true`; prepara logs JSON, tracing e contratos de telemetria do `oficina-app`
+- `OFICINA_OBSERVABILITY_JSON_LOGS_ENABLED`: default `true`
+- `OFICINA_OBSERVABILITY_METRICS_ENABLED`: default `true`
+- `OFICINA_OBSERVABILITY_TRACING_ENABLED`: default `true`
+- `OTEL_SERVICE_NAME`: default `oficina-app`
+- `OTEL_RESOURCE_ATTRIBUTES`: default `service.namespace=oficina,deployment.environment=lab`
+- `OTEL_EXPORTER_OTLP_ENDPOINT`: default vazio nesta fase
+- `OTEL_EXPORTER_OTLP_PROTOCOL`: default `grpc`
+- `OTEL_TRACES_EXPORTER`: default `none`
+- `OTEL_METRICS_EXPORTER`: default `none`
+- `OTEL_LOGS_EXPORTER`: default `none`
 
 Quando `OFICINA_APP_API_GATEWAY_JWT_AUTHORIZER_ENABLED=true`, o workflow passa a aplicar no `oficina-app` um JWT authorizer com issuer do gateway atual (ou override explicito), audience `["oficina-app"]` e scope `["oficina-app"]` por default. Nesse modo, o gateway protege a aplicacao por default e deixa publicos apenas `/q/swagger-ui`, `/q/swagger-ui/`, `/q/swagger-ui/*` e as rotas vigentes de magic link.
 - `CREATE_TERRAFORM_SHARED_DATA_BUCKET`
