@@ -315,6 +315,102 @@ variable "notificacao_lambda_security_group_name" {
   nullable    = true
 }
 
+variable "observability_enabled" {
+  type        = bool
+  description = "Quando true, ativa a stack AWS-native de observabilidade do laboratorio."
+  default     = true
+}
+
+variable "observability_environment_name" {
+  type        = string
+  description = "Nome do ambiente usado nos nomes de recursos de observabilidade."
+  default     = "lab"
+}
+
+variable "observability_enable_dashboard" {
+  type        = bool
+  description = "Quando true, cria o dashboard CloudWatch consolidado."
+  default     = true
+}
+
+variable "observability_enable_route53_healthchecks" {
+  type        = bool
+  description = "Quando true, cria health checks Route 53 para live e ready."
+  default     = true
+}
+
+variable "observability_enable_k8s_resource_metrics" {
+  type        = bool
+  description = "Quando true, habilita a coleta minima de CPU e memoria do oficina-app via CloudWatch agent."
+  default     = true
+}
+
+variable "observability_alert_email_endpoints" {
+  type        = list(string)
+  description = "Emails inscritos nos topicos SNS de alertas warning e critical."
+  default     = []
+}
+
+variable "observability_app_log_retention_in_days" {
+  type        = number
+  description = "Retencao do log group com logs estruturados do oficina-app."
+  default     = 14
+}
+
+variable "observability_prometheus_log_retention_in_days" {
+  type        = number
+  description = "Retencao do log group de eventos EMF do CloudWatch agent Prometheus."
+  default     = 7
+}
+
+variable "observability_metric_namespace" {
+  type        = string
+  description = "Namespace das metricas customizadas derivadas de logs da Oficina."
+  default     = "Oficina/Observability"
+}
+
+variable "observability_api_latency_warning_threshold_ms" {
+  type        = number
+  description = "Threshold warning do p95 de latencia da API, em milissegundos."
+  default     = 1500
+}
+
+variable "observability_api_latency_critical_threshold_ms" {
+  type        = number
+  description = "Threshold critical do p95 de latencia da API, em milissegundos."
+  default     = 3000
+}
+
+variable "observability_integration_failures_warning_threshold" {
+  type        = number
+  description = "Quantidade de falhas de integracao no periodo para warning."
+  default     = 1
+}
+
+variable "observability_integration_failures_critical_threshold" {
+  type        = number
+  description = "Quantidade de falhas de integracao no periodo para critical."
+  default     = 3
+}
+
+variable "observability_os_processing_failures_warning_threshold" {
+  type        = number
+  description = "Quantidade de falhas de processamento de OS no periodo para warning."
+  default     = 1
+}
+
+variable "observability_os_processing_failures_critical_threshold" {
+  type        = number
+  description = "Quantidade de falhas de processamento de OS no periodo para critical."
+  default     = 3
+}
+
+variable "observability_alarm_period_seconds" {
+  type        = number
+  description = "Periodo base dos alarmes de negocio, em segundos."
+  default     = 300
+}
+
 variable "api_gateway_http_routes" {
   type = map(object({
     integration_uri      = string

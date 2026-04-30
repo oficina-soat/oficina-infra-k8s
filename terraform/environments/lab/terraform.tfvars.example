@@ -46,6 +46,8 @@ create_ecr_repository = true
 # publicos apenas:
 # - /q/swagger-ui/
 # - /q/swagger-ui/*
+# - /q/health/live
+# - /q/health/ready
 # - /ordem-de-servico/{id}/acompanhar-link
 # - /ordem-de-servico/{id}/aprovar-link
 # - /ordem-de-servico/{id}/recusar-link
@@ -54,6 +56,13 @@ create_ecr_repository = true
 # o NodePort 31025 do Service mailhog-smtp-private e um SG dedicado para a
 # notificacao-lambda. Para desativar esse acesso privado:
 # expose_mailhog_smtp_private_nlb = false
+#
+# Observabilidade AWS-native do lab:
+# observability_enabled                      = true
+# observability_enable_dashboard             = true
+# observability_enable_route53_healthchecks  = true
+# observability_enable_k8s_resource_metrics  = true
+# observability_alert_email_endpoints        = ["ops@example.com"]
 #
 # Exemplo para publicar a aplicacao principal por URL publica:
 # api_gateway_http_routes = {

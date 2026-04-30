@@ -132,3 +132,38 @@ output "notificacao_lambda_security_group_id" {
   description = "ID do security group dedicado da notificacao-lambda para acesso privado na VPC."
   value       = try(aws_security_group.notificacao_lambda[0].id, null)
 }
+
+output "observability_app_log_group_name" {
+  description = "Log group dos logs estruturados do oficina-app no CloudWatch Logs."
+  value       = try(module.aws_native_observability[0].app_log_group_name, null)
+}
+
+output "observability_prometheus_log_group_name" {
+  description = "Log group dos eventos EMF do CloudWatch agent Prometheus."
+  value       = try(module.aws_native_observability[0].prometheus_log_group_name, null)
+}
+
+output "observability_dashboard_name" {
+  description = "Nome do dashboard CloudWatch criado para observabilidade."
+  value       = try(module.aws_native_observability[0].dashboard_name, null)
+}
+
+output "observability_warning_topic_arn" {
+  description = "ARN do topico SNS usado para alertas warning."
+  value       = try(module.aws_native_observability[0].warning_topic_arn, null)
+}
+
+output "observability_critical_topic_arn" {
+  description = "ARN do topico SNS usado para alertas critical."
+  value       = try(module.aws_native_observability[0].critical_topic_arn, null)
+}
+
+output "observability_live_healthcheck_id" {
+  description = "ID do health check Route 53 de liveness."
+  value       = try(module.aws_native_observability[0].live_healthcheck_id, null)
+}
+
+output "observability_ready_healthcheck_id" {
+  description = "ID do health check Route 53 de readiness."
+  value       = try(module.aws_native_observability[0].ready_healthcheck_id, null)
+}

@@ -175,11 +175,13 @@ Nesse modo, a exposição do `oficina-app` fica em deny by default no gateway. P
 - `GET /q/swagger-ui`
 - `GET /q/swagger-ui/`
 - `GET /q/swagger-ui/{proxy+}`
+- `GET /q/health/live`
+- `GET /q/health/ready`
 - `GET /ordem-de-servico/{id}/acompanhar-link`
 - `GET|POST /ordem-de-servico/{id}/aprovar-link`
 - `GET|POST /ordem-de-servico/{id}/recusar-link`
 
-`/q/health`, `/q/health/*` e `/q/openapi` não ficam públicos quando a flag está ativa.
+`/q/openapi` não fica público quando a flag está ativa.
 
 Para a aplicação principal, há dois padrões suportados:
 
@@ -231,22 +233,30 @@ Com a rota padrão do `oficina-app`, o teste público usa o output `oficina_app_
 API_URL="$(terraform -chdir=terraform/environments/lab output -raw oficina_app_public_base_url)"
 curl -i "${API_URL}/q/swagger-ui/"
 curl -i "${API_URL}/q/openapi"
-curl -i "${API_URL}/q/health"
+curl -i "${API_URL}/q/health/live"
+curl -i "${API_URL}/q/health/ready"
 curl -i "${API_URL}/ordem-de-servico/2b2276e8-fa72-4f4c-a3b0-2c5b1bf427ef/acompanhar-link?actionToken=<magic-link>"
 curl -i -H "Authorization: Bearer <jwt-valido>" "${API_URL}/ordem-de-servico"
 ```
 
-## Observabilidade vendor-neutral
+## Observabilidade
 
-O laboratório já deixa o `oficina-app` pronto para uma futura escolha de backend observability sem acoplar o cluster a um vendor nesta etapa.
+O repositório mantém duas camadas complementares de observabilidade:
+
+- a convenção vendor-neutral da suíte, preservada em [docs/telemetria.md](docs/telemetria.md)
+- a implantação AWS-native do `lab`, descrita em [docs/observabilidade-aws.md](docs/observabilidade-aws.md)
 
 - logs estruturados em JSON no app
 - OpenTelemetry habilitado para tracing e propagação de contexto
 - métricas de negócio e técnicas expostas pelo app
 - probes Kubernetes em `GET /q/health/live` e `GET /q/health/ready`
 - env vars OTEL e `OFICINA_OBSERVABILITY_*` padronizadas no `ConfigMap`
+- dashboard, alarmes, healthchecks e log groups na AWS para o ambiente `lab`
 
-Contrato consolidado: [docs/telemetria.md](docs/telemetria.md)
+Contratos e arquitetura:
+
+- [docs/telemetria.md](docs/telemetria.md)
+- [docs/observabilidade-aws.md](docs/observabilidade-aws.md)
 
 ## Deploy da aplicação
 

@@ -6,6 +6,8 @@ locals {
     var.terraform_shared_data_bucket_name,
     "tf-shared-${var.cluster_name}-${data.aws_caller_identity.current.account_id}-${var.region}"
   )
+  observability_app_log_group_name        = "/oficina/${var.observability_environment_name}/eks/oficina-app"
+  observability_prometheus_log_group_name = "/aws/containerinsights/${var.cluster_name}/prometheus"
   api_gateway_name                        = coalesce(var.api_gateway_name, "${var.cluster_name}-http-api")
   expose_oficina_app_api_gateway          = var.create_api_gateway && var.expose_oficina_app_api_gateway
   oficina_app_authorizer_key              = "oficina-app"
@@ -46,6 +48,14 @@ locals {
       connection_type = "VPC_LINK"
     }
     "GET /q/swagger-ui/{proxy+}" = {
+      integration_uri = module.oficina_app_private_nlb[0].listener_arn
+      connection_type = "VPC_LINK"
+    }
+    "GET /q/health/live" = {
+      integration_uri = module.oficina_app_private_nlb[0].listener_arn
+      connection_type = "VPC_LINK"
+    }
+    "GET /q/health/ready" = {
       integration_uri = module.oficina_app_private_nlb[0].listener_arn
       connection_type = "VPC_LINK"
     }
@@ -229,6 +239,49 @@ module "api_gateway" {
   http_routes                          = local.api_gateway_http_routes
   jwt_authorizers                      = local.api_gateway_jwt_authorizers
   lambda_routes                        = var.api_gateway_lambda_routes
+
+  tags = {
+    Environment = "lab"
+    ManagedBy   = "terraform"
+    Project     = "oficina"
+  }
+}
+
+resource "aws_iam_role_policy_attachment" "eks_node_cloudwatch_agent" {
+  count = var.observability_enabled ? 1 : 0
+
+  role       = element(reverse(split("/", var.eks_node_role_arn)), 0)
+  policy_arn = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
+}
+
+module "aws_native_observability" {
+  count  = var.observability_enabled ? 1 : 0
+  source = "../../modules/aws_native_observability"
+
+  enabled                                   = var.observability_enabled
+  environment                               = var.observability_environment_name
+  region                                    = var.region
+  cluster_name                              = var.cluster_name
+  api_gateway_id                            = try(module.api_gateway[0].api_id, null)
+  api_gateway_endpoint                      = try(module.api_gateway[0].api_endpoint, null)
+  api_gateway_stage_name                    = var.api_gateway_stage_name
+  api_gateway_access_log_group_name         = try(module.api_gateway[0].access_log_group_name, null)
+  app_log_group_name                        = local.observability_app_log_group_name
+  app_log_retention_in_days                 = var.observability_app_log_retention_in_days
+  prometheus_log_group_name                 = local.observability_prometheus_log_group_name
+  prometheus_log_retention_in_days          = var.observability_prometheus_log_retention_in_days
+  metric_namespace                          = var.observability_metric_namespace
+  enable_dashboard                          = var.observability_enable_dashboard
+  enable_k8s_resource_metrics               = var.observability_enable_k8s_resource_metrics
+  enable_route53_healthchecks               = var.observability_enable_route53_healthchecks
+  alert_email_endpoints                     = var.observability_alert_email_endpoints
+  api_latency_warning_threshold_ms          = var.observability_api_latency_warning_threshold_ms
+  api_latency_critical_threshold_ms         = var.observability_api_latency_critical_threshold_ms
+  integration_failures_warning_threshold    = var.observability_integration_failures_warning_threshold
+  integration_failures_critical_threshold   = var.observability_integration_failures_critical_threshold
+  os_processing_failures_warning_threshold  = var.observability_os_processing_failures_warning_threshold
+  os_processing_failures_critical_threshold = var.observability_os_processing_failures_critical_threshold
+  alarm_period_seconds                      = var.observability_alarm_period_seconds
 
   tags = {
     Environment = "lab"

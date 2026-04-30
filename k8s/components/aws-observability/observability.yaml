@@ -1,0 +1,307 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: amazon-cloudwatch
+  labels:
+    name: amazon-cloudwatch
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: fluent-bit
+  namespace: amazon-cloudwatch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: oficina-fluent-bit
+rules:
+  - apiGroups: [""]
+    resources:
+      - namespaces
+      - pods
+      - nodes
+      - nodes/proxy
+    verbs: ["get", "list", "watch"]
+  - nonResourceURLs:
+      - /metrics
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: oficina-fluent-bit
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: oficina-fluent-bit
+subjects:
+  - kind: ServiceAccount
+    name: fluent-bit
+    namespace: amazon-cloudwatch
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: oficina-fluent-bit-config
+  namespace: amazon-cloudwatch
+data:
+  fluent-bit.conf: |
+    [SERVICE]
+        Flush         5
+        Grace         30
+        Log_Level     error
+        Daemon        off
+        Parsers_File  parsers.conf
+
+    [INPUT]
+        Name                tail
+        Tag                 application.*
+        Path                /var/log/containers/*_default_oficina-app-*.log
+        multiline.parser    docker, cri
+        DB                  /var/fluent-bit/state/oficina-app.db
+        Mem_Buf_Limit       50MB
+        Skip_Long_Lines     On
+        Refresh_Interval    10
+        Rotate_Wait         30
+        storage.type        filesystem
+        Read_from_Head      Off
+
+    [FILTER]
+        Name                kubernetes
+        Match               application.*
+        Kube_URL            https://kubernetes.default.svc:443
+        Kube_Tag_Prefix     application.var.log.containers.
+        Merge_Log           On
+        Keep_Log            Off
+        K8S-Logging.Parser  On
+        K8S-Logging.Exclude Off
+        Labels              Off
+        Annotations         Off
+        Use_Kubelet         On
+        Kubelet_Port        10250
+        Buffer_Size         0
+
+    [OUTPUT]
+        Name                cloudwatch_logs
+        Match               application.*
+        region              OBSERVABILITY_AWS_REGION_PLACEHOLDER
+        log_group_name      OBSERVABILITY_APP_LOG_GROUP_PLACEHOLDER
+        log_stream_prefix   oficina-app-
+        auto_create_group   false
+        extra_user_agent    oficina-observability
+
+  parsers.conf: |
+    [PARSER]
+        Name                syslog
+        Format              regex
+        Regex               ^(?<time>[^ ]* {1,2}[^ ]* [^ ]*) (?<host>[^ ]*) (?<ident>[a-zA-Z0-9_\/\.\-]*)(?:\[(?<pid>[0-9]+)\])?(?:[^\:]*\:)? *(?<message>.*)$
+        Time_Key            time
+        Time_Format         %b %d %H:%M:%S
+
+    [PARSER]
+        Name                container_firstline
+        Format              regex
+        Regex               (?<log>(?<="log":")\S(?!\.).*?)(?<!\\)".*(?<stream>(?<="stream":").*?)".*(?<time>\d{4}-\d{1,2}-\d{1,2}T\d{2}:\d{2}:\d{2}\.\w*).*(?=})
+        Time_Key            time
+        Time_Format         %Y-%m-%dT%H:%M:%S.%LZ
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: fluent-bit
+  namespace: amazon-cloudwatch
+  labels:
+    app.kubernetes.io/name: fluent-bit
+    app.kubernetes.io/part-of: oficina
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: fluent-bit
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: fluent-bit
+        app.kubernetes.io/part-of: oficina
+    spec:
+      serviceAccountName: fluent-bit
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      nodeSelector:
+        kubernetes.io/os: OBSERVABILITY_NODE_OS_SELECTOR_PLACEHOLDER
+      terminationGracePeriodSeconds: 10
+      containers:
+        - name: fluent-bit
+          image: OBSERVABILITY_FLUENT_BIT_IMAGE_PLACEHOLDER
+          imagePullPolicy: IfNotPresent
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 128Mi
+          volumeMounts:
+            - name: fluentbitstate
+              mountPath: /var/fluent-bit/state
+            - name: varlog
+              mountPath: /var/log
+              readOnly: true
+            - name: config
+              mountPath: /fluent-bit/etc/
+      volumes:
+        - name: fluentbitstate
+          hostPath:
+            path: /var/fluent-bit/state
+        - name: varlog
+          hostPath:
+            path: /var/log
+        - name: config
+          configMap:
+            name: oficina-fluent-bit-config
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cwagent-prometheus
+  namespace: amazon-cloudwatch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: oficina-cwagent-prometheus
+rules:
+  - apiGroups: [""]
+    resources:
+      - nodes
+      - nodes/proxy
+      - services
+      - endpoints
+      - pods
+    verbs: ["get", "list", "watch"]
+  - nonResourceURLs:
+      - /metrics
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: oficina-cwagent-prometheus
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: oficina-cwagent-prometheus
+subjects:
+  - kind: ServiceAccount
+    name: cwagent-prometheus
+    namespace: amazon-cloudwatch
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: oficina-prometheus-cwagentconfig
+  namespace: amazon-cloudwatch
+data:
+  cwagentconfig.json: |
+    {
+      "agent": {
+        "region": "OBSERVABILITY_AWS_REGION_PLACEHOLDER"
+      },
+      "logs": {
+        "metrics_collected": {
+          "prometheus": {
+            "cluster_name": "OBSERVABILITY_CLUSTER_NAME_PLACEHOLDER",
+            "log_group_name": "OBSERVABILITY_PROMETHEUS_LOG_GROUP_PLACEHOLDER",
+            "prometheus_config_path": "/etc/prometheusconfig/prometheus.yaml",
+            "emf_processor": {
+              "metric_declaration": [
+                {
+                  "source_labels": ["namespace", "container"],
+                  "label_matcher": "^default;oficina-app$",
+                  "dimensions": [["ClusterName", "namespace", "container"]],
+                  "metric_selectors": [
+                    "^container_cpu_usage_seconds_total$",
+                    "^container_memory_working_set_bytes$"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        "force_flush_interval": 5
+      }
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: oficina-prometheus-config
+  namespace: amazon-cloudwatch
+data:
+  prometheus.yaml: |
+    global:
+      scrape_interval: 60s
+      scrape_timeout: 10s
+    scrape_configs:
+      - job_name: kubernetes-cadvisor
+        scheme: https
+        metrics_path: /metrics/cadvisor
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        tls_config:
+          insecure_skip_verify: true
+        kubernetes_sd_configs:
+          - role: node
+        relabel_configs:
+          - target_label: __address__
+            replacement: kubernetes.default.svc:443
+          - source_labels: [__meta_kubernetes_node_name]
+            target_label: __metrics_path__
+            replacement: /api/v1/nodes/$1/proxy/metrics/cadvisor
+          - target_label: ClusterName
+            replacement: OBSERVABILITY_CLUSTER_NAME_PLACEHOLDER
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cwagent-prometheus
+  namespace: amazon-cloudwatch
+  labels:
+    app.kubernetes.io/name: cwagent-prometheus
+    app.kubernetes.io/part-of: oficina
+spec:
+  replicas: OBSERVABILITY_CWAGENT_REPLICAS_PLACEHOLDER
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cwagent-prometheus
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: cwagent-prometheus
+        app.kubernetes.io/part-of: oficina
+    spec:
+      serviceAccountName: cwagent-prometheus
+      nodeSelector:
+        kubernetes.io/os: linux
+      containers:
+        - name: cloudwatch-agent
+          image: OBSERVABILITY_CWAGENT_IMAGE_PLACEHOLDER
+          imagePullPolicy: IfNotPresent
+          resources:
+            requests:
+              cpu: 50m
+              memory: 96Mi
+            limits:
+              cpu: 200m
+              memory: 192Mi
+          volumeMounts:
+            - name: cwagentconfig
+              mountPath: /etc/cwagentconfig
+            - name: prometheus-config
+              mountPath: /etc/prometheusconfig
+      terminationGracePeriodSeconds: 60
+      volumes:
+        - name: cwagentconfig
+          configMap:
+            name: oficina-prometheus-cwagentconfig
+        - name: prometheus-config
+          configMap:
+            name: oficina-prometheus-config

@@ -54,6 +54,10 @@ Campos de integração, quando aplicáveis:
 - `integration.name`
 - `integration.operation`
 - `integration.status`
+- `integration_name`
+- `integration_operation`
+- `integration_status`
+- `integration_failure_type`
 
 Campos de domínio, quando aplicáveis:
 
@@ -61,6 +65,7 @@ Campos de domínio, quando aplicáveis:
 - `ordem_servico_status`
 - `ordem_servico_status_anterior`
 - `ordem_servico_status_novo`
+- `ordem_servico_status_duration_ms`
 
 Regras:
 
