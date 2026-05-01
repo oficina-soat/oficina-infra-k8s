@@ -129,6 +129,12 @@ variable "create_ecr_repository" {
   default     = false
 }
 
+variable "ecr_force_delete" {
+  type        = bool
+  description = "Quando true, permite destruir o repositorio ECR mesmo com imagens."
+  default     = false
+}
+
 variable "create_terraform_shared_data_bucket" {
   type        = bool
   description = "Quando true, cria um bucket S3 para dados compartilhados do Terraform, incluindo backend remoto."

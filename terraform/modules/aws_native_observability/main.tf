@@ -11,12 +11,20 @@ locals {
   ready_healthcheck_path   = "${local.api_gateway_stage_prefix}${var.ready_healthcheck_path}"
   warning_alarm_actions    = var.enabled ? [aws_sns_topic.warning[0].arn] : []
   critical_alarm_actions   = var.enabled ? [aws_sns_topic.critical[0].arn] : []
+  metric_namespace         = "${var.metric_namespace}/${var.environment}"
   status_duration_states = {
     RECEBIDA             = "RECEBIDA"
     EM_DIAGNOSTICO       = "EM_DIAGNOSTICO"
     AGUARDANDO_APROVACAO = "AGUARDANDO_APROVACAO"
     EM_EXECUCAO          = "EM_EXECUCAO"
     FINALIZADA           = "FINALIZADA"
+  }
+  status_duration_metric_names = {
+    RECEBIDA             = "OsStatusDurationMsRecebida"
+    EM_DIAGNOSTICO       = "OsStatusDurationMsEmDiagnostico"
+    AGUARDANDO_APROVACAO = "OsStatusDurationMsAguardandoAprovacao"
+    EM_EXECUCAO          = "OsStatusDurationMsEmExecucao"
+    FINALIZADA           = "OsStatusDurationMsFinalizada"
   }
 }
 
@@ -77,7 +85,7 @@ resource "aws_cloudwatch_log_metric_filter" "os_created_total" {
 
   metric_transformation {
     name          = "OsCreatedTotal"
-    namespace     = var.metric_namespace
+    namespace     = local.metric_namespace
     value         = "1"
     default_value = 0
   }
@@ -91,14 +99,10 @@ resource "aws_cloudwatch_log_metric_filter" "os_status_duration_ms" {
   pattern        = "{ $.message = \"Transicao de ordem de servico concluida\" && $.ordem_servico_status_anterior = \"${each.value}\" && $.ordem_servico_status_duration_ms = * }"
 
   metric_transformation {
-    name      = "OsStatusDurationMs"
-    namespace = var.metric_namespace
+    name      = local.status_duration_metric_names[each.key]
+    namespace = local.metric_namespace
     value     = "$.ordem_servico_status_duration_ms"
     unit      = "Milliseconds"
-    dimensions = {
-      Environment = var.environment
-      Status      = each.value
-    }
   }
 }
 
@@ -111,7 +115,7 @@ resource "aws_cloudwatch_log_metric_filter" "integration_failures_total" {
 
   metric_transformation {
     name          = "IntegrationFailuresTotal"
-    namespace     = var.metric_namespace
+    namespace     = local.metric_namespace
     value         = "1"
     default_value = 0
   }
@@ -126,7 +130,7 @@ resource "aws_cloudwatch_log_metric_filter" "os_processing_failures_total" {
 
   metric_transformation {
     name          = "OsProcessingFailuresTotal"
-    namespace     = var.metric_namespace
+    namespace     = local.metric_namespace
     value         = "1"
     default_value = 0
   }
@@ -267,7 +271,7 @@ resource "aws_cloudwatch_metric_alarm" "integration_failures_warning" {
   evaluation_periods  = 1
   threshold           = var.integration_failures_warning_threshold
   metric_name         = aws_cloudwatch_log_metric_filter.integration_failures_total[0].metric_transformation[0].name
-  namespace           = var.metric_namespace
+  namespace           = local.metric_namespace
   period              = var.alarm_period_seconds
   statistic           = "Sum"
   treat_missing_data  = "notBreaching"
@@ -286,7 +290,7 @@ resource "aws_cloudwatch_metric_alarm" "integration_failures_critical" {
   evaluation_periods  = 1
   threshold           = var.integration_failures_critical_threshold
   metric_name         = aws_cloudwatch_log_metric_filter.integration_failures_total[0].metric_transformation[0].name
-  namespace           = var.metric_namespace
+  namespace           = local.metric_namespace
   period              = var.alarm_period_seconds
   statistic           = "Sum"
   treat_missing_data  = "notBreaching"
@@ -305,7 +309,7 @@ resource "aws_cloudwatch_metric_alarm" "os_processing_failures_warning" {
   evaluation_periods  = 1
   threshold           = var.os_processing_failures_warning_threshold
   metric_name         = aws_cloudwatch_log_metric_filter.os_processing_failures_total[0].metric_transformation[0].name
-  namespace           = var.metric_namespace
+  namespace           = local.metric_namespace
   period              = var.alarm_period_seconds
   statistic           = "Sum"
   treat_missing_data  = "notBreaching"
@@ -324,7 +328,7 @@ resource "aws_cloudwatch_metric_alarm" "os_processing_failures_critical" {
   evaluation_periods  = 1
   threshold           = var.os_processing_failures_critical_threshold
   metric_name         = aws_cloudwatch_log_metric_filter.os_processing_failures_total[0].metric_transformation[0].name
-  namespace           = var.metric_namespace
+  namespace           = local.metric_namespace
   period              = var.alarm_period_seconds
   statistic           = "Sum"
   treat_missing_data  = "notBreaching"
@@ -355,7 +359,7 @@ resource "aws_cloudwatch_dashboard" "this" {
             view    = "timeSeries"
             stacked = false
             metrics = [
-              [var.metric_namespace, "OsCreatedTotal", { label = "Ordens criadas por dia" }]
+              [local.metric_namespace, "OsCreatedTotal", { label = "Ordens criadas por dia" }]
             ]
           }
         },
@@ -373,11 +377,11 @@ resource "aws_cloudwatch_dashboard" "this" {
             view    = "timeSeries"
             stacked = false
             metrics = [
-              [var.metric_namespace, "OsStatusDurationMs", "Environment", var.environment, "Status", "RECEBIDA", { label = "RECEBIDA" }],
-              [".", "OsStatusDurationMs", ".", ".", "Status", "EM_DIAGNOSTICO", { label = "EM_DIAGNOSTICO" }],
-              [".", "OsStatusDurationMs", ".", ".", "Status", "AGUARDANDO_APROVACAO", { label = "AGUARDANDO_APROVACAO" }],
-              [".", "OsStatusDurationMs", ".", ".", "Status", "EM_EXECUCAO", { label = "EM_EXECUCAO" }],
-              [".", "OsStatusDurationMs", ".", ".", "Status", "FINALIZADA", { label = "FINALIZADA" }]
+              [local.metric_namespace, local.status_duration_metric_names.RECEBIDA, { label = "RECEBIDA" }],
+              [".", local.status_duration_metric_names.EM_DIAGNOSTICO, { label = "EM_DIAGNOSTICO" }],
+              [".", local.status_duration_metric_names.AGUARDANDO_APROVACAO, { label = "AGUARDANDO_APROVACAO" }],
+              [".", local.status_duration_metric_names.EM_EXECUCAO, { label = "EM_EXECUCAO" }],
+              [".", local.status_duration_metric_names.FINALIZADA, { label = "FINALIZADA" }]
             ]
           }
         },
@@ -396,10 +400,10 @@ resource "aws_cloudwatch_dashboard" "this" {
             stacked = false
             metrics = concat(
               [
-                [var.metric_namespace, "IntegrationFailuresTotal", { label = "Falhas de integracao" }]
+                [local.metric_namespace, "IntegrationFailuresTotal", { label = "Falhas de integracao" }]
               ],
               var.api_gateway_access_log_group_name != null ? [
-                [var.metric_namespace, "OsProcessingFailuresTotal", { label = "Falhas de processamento OS" }]
+                [local.metric_namespace, "OsProcessingFailuresTotal", { label = "Falhas de processamento OS" }]
               ] : []
             )
           }
