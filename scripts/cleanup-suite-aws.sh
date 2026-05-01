@@ -364,7 +364,7 @@ disable_db_deletion_protection() {
   aws rds modify-db-instance \
     --region "${AWS_REGION}" \
     --db-instance-identifier "${DB_IDENTIFIER}" \
-    --deletion-protection false \
+    --no-deletion-protection \
     --apply-immediately >/dev/null
 }
 
