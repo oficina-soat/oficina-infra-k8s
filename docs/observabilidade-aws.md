@@ -10,7 +10,7 @@ Esta etapa conecta a base vendor-neutral da suíte Oficina a serviços nativos d
   - logs nativos das Lambdas continuam no CloudWatch Logs
 - `CloudWatch Logs Metric Filters`
   - `OsCreatedTotal`
-  - `OsStatusDurationMs`
+  - `OsStatusDurationMs*` por status
   - `IntegrationFailuresTotal`
   - `OsProcessingFailuresTotal`
 - `CloudWatch Metrics`
@@ -31,6 +31,7 @@ Esta etapa conecta a base vendor-neutral da suíte Oficina a serviços nativos d
 - uptime usa `Route 53 Health Checks`, que é mais barato e mais simples do que `CloudWatch Synthetics` para este caso
 - dashboards ficam em `CloudWatch Dashboard`, evitando `Amazon Managed Grafana`
 - métricas de negócio saem de logs estruturados com `Metric Filters`, evitando collector permanente para esses sinais
+- o namespace de métricas é particionado por ambiente (`<namespace-base>/<environment>`), evitando mistura entre `lab` e ambientes futuros sem precisar de dimensões extras
 - consumo k8s coleta só duas métricas úteis do `oficina-app` via `cAdvisor`:
   - `container_cpu_usage_seconds_total`
   - `container_memory_working_set_bytes`
