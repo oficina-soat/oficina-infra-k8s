@@ -48,8 +48,9 @@ O cleanup previo remove recursos que este repositorio nao gerencia diretamente n
 
 - `oficina-auth-lambda-lab`
 - `oficina-notificacao-lambda-lab`
-- log groups dessas Lambdas
+- log groups dessas Lambdas e o legado `/aws/lambda/OficinaAuthLambdaNative`
 - security group dedicado do `auth-lambda`
+- repositorio ECR da suite, mesmo com imagens
 - RDS `oficina-postgres-lab`
 - parameter group, subnet group, security group, role de monitoring, log groups e alarmes do banco
 - secrets runtime da suite no Secrets Manager, quando `delete_runtime_secrets=true`

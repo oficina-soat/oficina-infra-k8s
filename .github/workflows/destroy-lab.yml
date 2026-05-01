@@ -55,10 +55,12 @@ jobs:
       AUTH_DB_SECRET_NAME: ${{ vars.AUTH_DB_SECRET_NAME || 'oficina/lab/database/auth-lambda' }}
       AUTH_LAMBDA_FUNCTION_NAME: ${{ vars.AUTH_LAMBDA_FUNCTION_NAME || 'oficina-auth-lambda-lab' }}
       AUTH_LAMBDA_LOG_GROUP_NAME: ${{ vars.AUTH_LAMBDA_LOG_GROUP_NAME || format('/aws/lambda/{0}', vars.AUTH_LAMBDA_FUNCTION_NAME || 'oficina-auth-lambda-lab') }}
+      AUTH_LAMBDA_LEGACY_LOG_GROUP_NAME: ${{ vars.AUTH_LAMBDA_LEGACY_LOG_GROUP_NAME || '/aws/lambda/OficinaAuthLambdaNative' }}
       AUTH_LAMBDA_SECURITY_GROUP_NAME: ${{ vars.AUTH_LAMBDA_SECURITY_GROUP_NAME || format('{0}-sg', vars.AUTH_LAMBDA_FUNCTION_NAME || 'oficina-auth-lambda-lab') }}
       NOTIFICACAO_LAMBDA_FUNCTION_NAME: ${{ vars.NOTIFICACAO_LAMBDA_FUNCTION_NAME || 'oficina-notificacao-lambda-lab' }}
       NOTIFICACAO_LAMBDA_LOG_GROUP_NAME: ${{ vars.NOTIFICACAO_LAMBDA_LOG_GROUP_NAME || format('/aws/lambda/{0}', vars.NOTIFICACAO_LAMBDA_FUNCTION_NAME || 'oficina-notificacao-lambda-lab') }}
       NOTIFICACAO_LAMBDA_SECURITY_GROUP_NAME: ${{ vars.NOTIFICACAO_LAMBDA_SECURITY_GROUP_NAME || vars.NOTIFICACAO_LAMBDA_SECURITY_GROUP || format('{0}-notificacao-lambda', vars.EKS_CLUSTER_NAME || 'eks-lab') }}
+      ECR_REPOSITORY_NAME: ${{ vars.ECR_REPOSITORY_NAME || 'oficina' }}
       LAMBDA_ARTIFACT_BUCKET: ${{ vars.LAMBDA_ARTIFACT_BUCKET || vars.TF_STATE_BUCKET }}
       AUTH_LAMBDA_ARTIFACT_PREFIX: ${{ vars.AUTH_LAMBDA_ARTIFACT_PREFIX || 'oficina/lab/lambda/oficina-auth-lambda' }}
       NOTIFICACAO_LAMBDA_ARTIFACT_PREFIX: ${{ vars.NOTIFICACAO_LAMBDA_ARTIFACT_PREFIX || 'oficina/lab/lambda/oficina-notificacao-lambda' }}

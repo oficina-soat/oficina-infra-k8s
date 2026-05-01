@@ -414,7 +414,8 @@ Use o workflow `Destroy Lab` quando quiser desmontar a suíte inteira do laborat
 
 O `Destroy Lab` remove, quando existirem:
 
-- `auth-lambda` e `notificacao-lambda`, seus log groups e o security group dedicado do `auth-lambda`
+- `auth-lambda` e `notificacao-lambda`, seus log groups, o log group legado `/aws/lambda/OficinaAuthLambdaNative` e o security group dedicado do `auth-lambda`
+- repositório ECR da suíte, mesmo com imagens
 - RDS PostgreSQL do laboratório, log groups, alarmes, parameter group, subnet group, security group e role de enhanced monitoring
 - secrets runtime compartilhados da suíte no Secrets Manager, como `oficina/lab/jwt`, `oficina/lab/database/app` e os sub-secrets de `oficina/lab/database/auth-lambda`, quando `delete_runtime_secrets=true`
 - objetos de artefato das Lambdas no bucket S3 configurado, quando `delete_lambda_artifact_objects=true`

@@ -15,9 +15,11 @@ JWT_SECRET_NAME="${JWT_SECRET_NAME:-oficina/lab/jwt}"
 AUTH_LAMBDA_FUNCTION_NAME="${AUTH_LAMBDA_FUNCTION_NAME:-oficina-auth-lambda-lab}"
 NOTIFICACAO_LAMBDA_FUNCTION_NAME="${NOTIFICACAO_LAMBDA_FUNCTION_NAME:-oficina-notificacao-lambda-lab}"
 AUTH_LAMBDA_LOG_GROUP_NAME="${AUTH_LAMBDA_LOG_GROUP_NAME:-/aws/lambda/${AUTH_LAMBDA_FUNCTION_NAME}}"
+AUTH_LAMBDA_LEGACY_LOG_GROUP_NAME="${AUTH_LAMBDA_LEGACY_LOG_GROUP_NAME:-/aws/lambda/OficinaAuthLambdaNative}"
 NOTIFICACAO_LAMBDA_LOG_GROUP_NAME="${NOTIFICACAO_LAMBDA_LOG_GROUP_NAME:-/aws/lambda/${NOTIFICACAO_LAMBDA_FUNCTION_NAME}}"
 AUTH_LAMBDA_SECURITY_GROUP_NAME="${AUTH_LAMBDA_SECURITY_GROUP_NAME:-${AUTH_LAMBDA_FUNCTION_NAME}-sg}"
 NOTIFICACAO_LAMBDA_SECURITY_GROUP_NAME="${NOTIFICACAO_LAMBDA_SECURITY_GROUP_NAME:-${EKS_CLUSTER_NAME}-notificacao-lambda}"
+ECR_REPOSITORY_NAME="${ECR_REPOSITORY_NAME:-oficina}"
 LAMBDA_ARTIFACT_BUCKET="${LAMBDA_ARTIFACT_BUCKET:-${TF_STATE_BUCKET:-}}"
 AUTH_LAMBDA_ARTIFACT_PREFIX="${AUTH_LAMBDA_ARTIFACT_PREFIX:-oficina/lab/lambda/oficina-auth-lambda}"
 NOTIFICACAO_LAMBDA_ARTIFACT_PREFIX="${NOTIFICACAO_LAMBDA_ARTIFACT_PREFIX:-oficina/lab/lambda/oficina-notificacao-lambda}"
@@ -243,6 +245,33 @@ delete_log_group_if_exists() {
     --log-group-name "${log_group_name}" >/dev/null
 }
 
+ecr_repository_exists() {
+  local repository_name="$1"
+
+  if [[ -z "${repository_name}" ]]; then
+    return 1
+  fi
+
+  aws ecr describe-repositories \
+    --region "${AWS_REGION}" \
+    --repository-names "${repository_name}" >/dev/null 2>&1
+}
+
+delete_ecr_repository_if_exists() {
+  local repository_name="$1"
+
+  if ! ecr_repository_exists "${repository_name}"; then
+    log "Repositorio ECR ${repository_name} nao encontrado; seguindo"
+    return
+  fi
+
+  log "Removendo repositorio ECR ${repository_name}"
+  aws ecr delete-repository \
+    --region "${AWS_REGION}" \
+    --repository-name "${repository_name}" \
+    --force >/dev/null
+}
+
 list_security_group_network_interfaces() {
   local security_group_id="$1"
 
@@ -339,6 +368,7 @@ cleanup_auth_lambda() {
   revoke_db_ingress_from_security_group "${auth_lambda_sg_id}"
   delete_lambda_function "${AUTH_LAMBDA_FUNCTION_NAME}"
   delete_log_group_if_exists "${AUTH_LAMBDA_LOG_GROUP_NAME}"
+  delete_log_group_if_exists "${AUTH_LAMBDA_LEGACY_LOG_GROUP_NAME}"
   delete_security_group_if_released "${auth_lambda_sg_id}"
 }
 
@@ -599,6 +629,7 @@ aws sts get-caller-identity >/dev/null
 
 cleanup_auth_lambda
 cleanup_notificacao_lambda
+delete_ecr_repository_if_exists "${ECR_REPOSITORY_NAME}"
 cleanup_database
 
 if is_truthy "${DELETE_RUNTIME_SECRETS}"; then
