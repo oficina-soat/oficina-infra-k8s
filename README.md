@@ -410,9 +410,16 @@ Use o workflow `Deactivate EKS Lab` quando quiser remover somente o EKS durante 
 
 O workflow `Deactivate EKS Lab` exige state remoto existente. Rode `Deploy Lab` pelo menos uma vez antes de usá-lo.
 
-Use o workflow `Destroy Lab` quando quiser desmontar o laboratório inteiro. Ele exige o valor `DESTROY` no campo de confirmação e executa um `terraform destroy` completo com limpeza forçada do bucket S3 gerenciado por este ambiente e do repositório ECR gerenciado por este state, inclusive quando houver objetos ou imagens.
+Use o workflow `Destroy Lab` quando quiser desmontar a suíte inteira do laboratório. Antes do `terraform destroy` deste repositório, ele remove também os recursos AWS criados pelos fluxos dos repositórios irmãos `oficina-auth-lambda` e `oficina-infra-db`, para evitar que ENIs de Lambda ou o RDS prendam a VPC compartilhada.
 
-O `Destroy Lab` remove, quando gerenciados por este repositório/state:
+O `Destroy Lab` remove, quando existirem:
+
+- `auth-lambda` e `notificacao-lambda`, seus log groups e o security group dedicado do `auth-lambda`
+- RDS PostgreSQL do laboratório, log groups, alarmes, parameter group, subnet group, security group e role de enhanced monitoring
+- secrets runtime compartilhados da suíte no Secrets Manager, como `oficina/lab/jwt`, `oficina/lab/database/app` e os sub-secrets de `oficina/lab/database/auth-lambda`, quando `delete_runtime_secrets=true`
+- objetos de artefato das Lambdas no bucket S3 configurado, quando `delete_lambda_artifact_objects=true`
+
+Depois disso, o workflow destrói, quando gerenciados por este repositório/state:
 
 - VPC, subnets públicas, internet gateway, route table e associações
 - cluster EKS, managed node group, access entry e access policy association
@@ -422,7 +429,9 @@ O `Destroy Lab` remove, quando gerenciados por este repositório/state:
 - repositório ECR criado por este ambiente, mesmo com imagens
 - bucket S3 compartilhado do Terraform quando ele faz parte do state deste ambiente, mesmo com objetos/versionamento
 
-O workflow preserva recursos externos que o laboratório apenas reutiliza, como bucket de backend remoto fora do state, repositório ECR externo e secrets de banco criados em outros repositórios. Opcionalmente ele também pode remover o secret compartilhado `oficina/lab/jwt` do Secrets Manager.
+Para zerar custo de armazenamento do banco, o input `skip_final_db_snapshot` fica disponível no workflow. Com o default `true`, o RDS é removido sem snapshot final.
+
+O workflow preserva recursos externos que o laboratório apenas reutiliza, como bucket de backend remoto fora do state e repositório ECR externo.
 
 ## Validações recomendadas
 

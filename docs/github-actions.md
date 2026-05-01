@@ -42,7 +42,20 @@ Esse workflow exige state remoto existente. Rode `Deploy Lab` pelo menos uma vez
 
 ## Destroy Lab
 
-O workflow `Destroy Lab` desmonta o laboratorio inteiro. Ele exige confirmacao manual com o valor `DESTROY` e executa `bash ./scripts/ci-terraform.sh` com:
+O workflow `Destroy Lab` desmonta a suite inteira do laboratorio. Ele exige confirmacao manual com o valor `DESTROY` e executa primeiro `bash ./scripts/cleanup-suite-aws.sh`, seguido de `bash ./scripts/ci-terraform.sh`.
+
+O cleanup previo remove recursos que este repositorio nao gerencia diretamente no state, mas que ainda prendem a VPC compartilhada ou continuam cobrando:
+
+- `oficina-auth-lambda-lab`
+- `oficina-notificacao-lambda-lab`
+- log groups dessas Lambdas
+- security group dedicado do `auth-lambda`
+- RDS `oficina-postgres-lab`
+- parameter group, subnet group, security group, role de monitoring, log groups e alarmes do banco
+- secrets runtime da suite no Secrets Manager, quando `delete_runtime_secrets=true`
+- objetos de artefato das Lambdas no bucket configurado, quando `delete_lambda_artifact_objects=true`
+
+Depois desse cleanup, o workflow executa o destroy Terraform deste repositorio com:
 
 - `TERRAFORM_ACTION=destroy`
 - `TF_VAR_ecr_force_delete=true`
@@ -59,9 +72,9 @@ Com isso, o teardown remove, quando os recursos estiverem no state deste ambient
 - repositorio ECR criado por este ambiente, mesmo com imagens
 - bucket S3 compartilhado do Terraform quando ele pertence a este state, mesmo com objetos e versionamento
 
-Se o laboratorio estiver reutilizando um bucket de backend remoto ou um repositorio ECR externos ao state, o workflow os preserva por design.
+O input `skip_final_db_snapshot` controla se o RDS sera removido sem snapshot final. O default e `true`, alinhado ao objetivo de zerar custo quando o laboratorio nao estiver em uso.
 
-O workflow tambem expoe a opcao `delete_shared_jwt_secret`. Quando marcada, ele remove o secret compartilhado `oficina/lab/jwt` do Secrets Manager com `force-delete-without-recovery`. O secret de banco nao e tocado, porque ele pertence a outros fluxos/repositorios.
+Se o laboratorio estiver reutilizando um bucket de backend remoto ou um repositorio ECR externos ao state, o workflow os preserva por design.
 
 ## Autenticacao AWS
 
