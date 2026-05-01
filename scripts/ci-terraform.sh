@@ -370,11 +370,43 @@ delete_bucket_object_versions() {
   local key=""
   local version_id=""
 
+  while true; do
+    entries="$(
+      aws s3api list-object-versions \
+        --region "${TF_STATE_REGION}" \
+        --bucket "${bucket_name}" \
+        --query "${query}" \
+        --output text 2>/dev/null || true
+    )"
+
+    if [[ -z "${entries}" || "${entries}" == "None" ]]; then
+      return
+    fi
+
+    while IFS=$'\t' read -r key version_id; do
+      [[ -n "${key}" && "${key}" != "None" ]] || continue
+      [[ -n "${version_id}" && "${version_id}" != "None" ]] || continue
+
+      aws s3api delete-object \
+        --region "${TF_STATE_REGION}" \
+        --bucket "${bucket_name}" \
+        --key "${key}" \
+        --version-id "${version_id}" >/dev/null
+    done <<<"${entries}"
+  done
+}
+
+abort_bucket_multipart_uploads() {
+  local bucket_name="$1"
+  local entries=""
+  local key=""
+  local upload_id=""
+
   entries="$(
-    aws s3api list-object-versions \
+    aws s3api list-multipart-uploads \
       --region "${TF_STATE_REGION}" \
       --bucket "${bucket_name}" \
-      --query "${query}" \
+      --query 'Uploads[].[Key,UploadId]' \
       --output text 2>/dev/null || true
   )"
 
@@ -382,16 +414,34 @@ delete_bucket_object_versions() {
     return
   fi
 
-  while IFS=$'\t' read -r key version_id; do
+  while IFS=$'\t' read -r key upload_id; do
     [[ -n "${key}" && "${key}" != "None" ]] || continue
-    [[ -n "${version_id}" && "${version_id}" != "None" ]] || continue
+    [[ -n "${upload_id}" && "${upload_id}" != "None" ]] || continue
 
-    aws s3api delete-object \
+    aws s3api abort-multipart-upload \
       --region "${TF_STATE_REGION}" \
       --bucket "${bucket_name}" \
       --key "${key}" \
-      --version-id "${version_id}" >/dev/null
+      --upload-id "${upload_id}" >/dev/null 2>&1 || true
   done <<<"${entries}"
+}
+
+empty_shared_state_bucket_if_exists() {
+  local bucket_name="$1"
+
+  if [[ -z "${bucket_name}" ]]; then
+    return
+  fi
+
+  if ! aws s3api head-bucket --region "${TF_STATE_REGION}" --bucket "${bucket_name}" >/dev/null 2>&1; then
+    log "Bucket compartilhado ${bucket_name} ja nao existe; seguindo"
+    return
+  fi
+
+  log "Esvaziando bucket compartilhado versionado ${bucket_name}"
+  abort_bucket_multipart_uploads "${bucket_name}"
+  delete_bucket_object_versions "${bucket_name}" 'Versions[].[Key,VersionId]'
+  delete_bucket_object_versions "${bucket_name}" 'DeleteMarkers[].[Key,VersionId]'
 }
 
 delete_shared_state_bucket_if_requested() {
@@ -405,14 +455,11 @@ delete_shared_state_bucket_if_requested() {
     return
   fi
 
+  empty_shared_state_bucket_if_exists "${bucket_name}"
+
   if ! aws s3api head-bucket --region "${TF_STATE_REGION}" --bucket "${bucket_name}" >/dev/null 2>&1; then
-    log "Bucket compartilhado ${bucket_name} ja nao existe; seguindo"
     return
   fi
-
-  log "Removendo objetos versionados do bucket compartilhado ${bucket_name}"
-  delete_bucket_object_versions "${bucket_name}" 'Versions[].[Key,VersionId]'
-  delete_bucket_object_versions "${bucket_name}" 'DeleteMarkers[].[Key,VersionId]'
 
   log "Removendo bucket compartilhado ${bucket_name}"
   aws s3api delete-bucket \
@@ -614,6 +661,9 @@ run_destroy() {
       export TF_VAR_terraform_shared_data_bucket_name="${EFFECTIVE_TF_STATE_BUCKET}"
       set_shared_bucket_mode
       set_ecr_repository_mode
+      if terraform_state_manages_shared_bucket; then
+        empty_shared_state_bucket_if_exists "${EFFECTIVE_TF_STATE_BUCKET}"
+      fi
       terraform_destroy
       delete_shared_state_bucket_if_requested "${EFFECTIVE_TF_STATE_BUCKET}"
       rm -f "${LOCAL_DESTROY_STATE_MARKER}"
@@ -637,6 +687,7 @@ run_destroy() {
       log "O bucket de backend faz parte do state; migrando o state para backend local antes do destroy."
       export TF_VAR_create_terraform_shared_data_bucket="true"
       terraform_migrate_state_local
+      empty_shared_state_bucket_if_exists "${EFFECTIVE_TF_STATE_BUCKET}"
     else
       log "O bucket de backend e externo ao state deste ambiente; destruindo a infraestrutura sem tocar no bucket."
       export TF_VAR_create_terraform_shared_data_bucket="false"
