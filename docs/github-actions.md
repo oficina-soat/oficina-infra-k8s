@@ -66,6 +66,8 @@ Depois desse cleanup, o workflow executa o destroy Terraform deste repositorio c
 - `TF_VAR_ecr_force_delete=true`
 - `TF_VAR_terraform_shared_data_bucket_force_destroy=true`
 
+Ao carregar o backend S3, o script isola qualquer `terraform.tfstate` local que nao tenha sido gerado por uma migracao intencional do proprio destroy. Quando o bucket compartilhado faz parte do state, a migracao para state local cria um marcador temporario; se uma tentativa falhar, a proxima continua desse state local em vez de tentar migrar novamente a partir do remoto.
+
 Com isso, o teardown remove, quando os recursos estiverem no state deste ambiente:
 
 - VPC, subnets publicas, internet gateway, route table e associacoes

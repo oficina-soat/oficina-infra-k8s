@@ -21,6 +21,7 @@ EFFECTIVE_TF_STATE_BUCKET=""
 backend_override_file=""
 TERRAFORM_ECR_REPOSITORY_URL_FILE="${TERRAFORM_ECR_REPOSITORY_URL_FILE:-}"
 DELETE_SHARED_STATE_BUCKET="${DELETE_SHARED_STATE_BUCKET:-false}"
+LOCAL_DESTROY_STATE_MARKER="${TERRAFORM_DIR}/.terraform-local-destroy-state"
 
 cleanup() {
   if [[ -n "${backend_override_file}" && -f "${backend_override_file}" ]]; then
@@ -276,8 +277,31 @@ terraform_remote_backend_args() {
   printf '%s\n' "${args[@]}"
 }
 
+reset_terraform_backend_metadata() {
+  rm -rf "${TERRAFORM_DIR}/.terraform"
+}
+
+local_state_exists() {
+  [[ -s "${TERRAFORM_DIR}/terraform.tfstate" ]]
+}
+
+stash_local_state_for_remote_init() {
+  local suffix=""
+  local state_file=""
+  suffix="$(date '+%Y%m%d%H%M%S')-$$"
+
+  for state_file in terraform.tfstate terraform.tfstate.backup; do
+    if [[ -e "${TERRAFORM_DIR}/${state_file}" ]]; then
+      log "Isolando state local ${state_file} antes de carregar backend remoto."
+      mv "${TERRAFORM_DIR}/${state_file}" "${TERRAFORM_DIR}/${state_file}.ignored-${suffix}"
+    fi
+  done
+}
+
 terraform_init_remote() {
   mapfile -t backend_args < <(terraform_remote_backend_args)
+  stash_local_state_for_remote_init
+  reset_terraform_backend_metadata
   terraform -chdir="${TERRAFORM_DIR}" init -input=false -reconfigure "${backend_args[@]}"
 }
 
@@ -326,6 +350,7 @@ disable_remote_backend_override() {
 terraform_migrate_state_local() {
   disable_remote_backend_override
   terraform -chdir="${TERRAFORM_DIR}" init -input=false -migrate-state -force-copy
+  touch "${LOCAL_DESTROY_STATE_MARKER}"
 }
 
 terraform_state_manages_shared_bucket() {
@@ -579,6 +604,23 @@ run_destroy() {
     return
   fi
 
+  if [[ -f "${LOCAL_DESTROY_STATE_MARKER}" ]]; then
+    if ! local_state_exists; then
+      log "Marcador de destroy local encontrado, mas terraform.tfstate local nao existe; removendo marcador e carregando state remoto."
+      rm -f "${LOCAL_DESTROY_STATE_MARKER}"
+    else
+      log "State local de destroy anterior encontrado; continuando destroy sem recarregar o backend remoto."
+      terraform_init_local
+      export TF_VAR_terraform_shared_data_bucket_name="${EFFECTIVE_TF_STATE_BUCKET}"
+      set_shared_bucket_mode
+      set_ecr_repository_mode
+      terraform_destroy
+      delete_shared_state_bucket_if_requested "${EFFECTIVE_TF_STATE_BUCKET}"
+      rm -f "${LOCAL_DESTROY_STATE_MARKER}"
+      return
+    fi
+  fi
+
   if aws_bucket_exists; then
     export TF_VAR_terraform_shared_data_bucket_name="${EFFECTIVE_TF_STATE_BUCKET}"
 
@@ -609,6 +651,7 @@ run_destroy() {
   set_ecr_repository_mode
   terraform_destroy
   delete_shared_state_bucket_if_requested "${EFFECTIVE_TF_STATE_BUCKET}"
+  rm -f "${LOCAL_DESTROY_STATE_MARKER}"
 }
 
 normalize_optional_envs

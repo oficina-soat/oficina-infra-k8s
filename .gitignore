@@ -9,6 +9,7 @@
 .terragrunt-cache/
 *.tfstate
 *.tfstate.*
+terraform/environments/lab/.terraform-local-destroy-state
 *.tfvars
 *.auto.tfvars
 terraform/environments/lab/backend.s3.tf
