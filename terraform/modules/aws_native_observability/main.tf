@@ -1,4 +1,7 @@
 locals {
+  api_gateway_healthchecks_enabled       = var.enabled && var.api_gateway_enabled && var.enable_route53_healthchecks
+  api_gateway_latency_alarms_enabled     = var.enabled && var.api_gateway_enabled
+  api_gateway_access_log_metrics_enabled = var.enabled && var.api_gateway_access_logs_enabled
   api_gateway_host = trimsuffix(
     trimprefix(
       trimprefix(coalesce(var.api_gateway_endpoint, ""), "https://"),
@@ -122,7 +125,7 @@ resource "aws_cloudwatch_log_metric_filter" "integration_failures_total" {
 }
 
 resource "aws_cloudwatch_log_metric_filter" "os_processing_failures_total" {
-  count = var.enabled && var.api_gateway_access_log_group_name != null ? 1 : 0
+  count = local.api_gateway_access_log_metrics_enabled ? 1 : 0
 
   name           = "oficina-${var.environment}-os-processing-failures-total"
   log_group_name = var.api_gateway_access_log_group_name
@@ -137,7 +140,7 @@ resource "aws_cloudwatch_log_metric_filter" "os_processing_failures_total" {
 }
 
 resource "aws_route53_health_check" "live" {
-  count = var.enabled && var.enable_route53_healthchecks && local.api_gateway_host != "" ? 1 : 0
+  count = local.api_gateway_healthchecks_enabled ? 1 : 0
 
   fqdn              = local.api_gateway_host
   port              = 443
@@ -153,7 +156,7 @@ resource "aws_route53_health_check" "live" {
 }
 
 resource "aws_route53_health_check" "ready" {
-  count = var.enabled && var.enable_route53_healthchecks && local.api_gateway_host != "" ? 1 : 0
+  count = local.api_gateway_healthchecks_enabled ? 1 : 0
 
   fqdn              = local.api_gateway_host
   port              = 443
@@ -169,7 +172,7 @@ resource "aws_route53_health_check" "ready" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "uptime_live_critical" {
-  count = var.enabled && var.enable_route53_healthchecks && local.api_gateway_host != "" ? 1 : 0
+  count = local.api_gateway_healthchecks_enabled ? 1 : 0
 
   alarm_name          = "oficina-${var.environment}-uptime-live-critical"
   alarm_description   = "Critical: healthcheck live do oficina-app indisponivel."
@@ -192,7 +195,7 @@ resource "aws_cloudwatch_metric_alarm" "uptime_live_critical" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "uptime_ready_warning" {
-  count = var.enabled && var.enable_route53_healthchecks && local.api_gateway_host != "" ? 1 : 0
+  count = local.api_gateway_healthchecks_enabled ? 1 : 0
 
   alarm_name          = "oficina-${var.environment}-uptime-ready-warning"
   alarm_description   = "Warning: healthcheck ready do oficina-app degradado."
@@ -215,7 +218,7 @@ resource "aws_cloudwatch_metric_alarm" "uptime_ready_warning" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "api_latency_warning" {
-  count = var.enabled && var.api_gateway_id != null ? 1 : 0
+  count = local.api_gateway_latency_alarms_enabled ? 1 : 0
 
   alarm_name          = "oficina-${var.environment}-api-latency-warning"
   alarm_description   = "Warning: p95 de latencia do API Gateway acima do limite."
@@ -239,7 +242,7 @@ resource "aws_cloudwatch_metric_alarm" "api_latency_warning" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "api_latency_critical" {
-  count = var.enabled && var.api_gateway_id != null ? 1 : 0
+  count = local.api_gateway_latency_alarms_enabled ? 1 : 0
 
   alarm_name          = "oficina-${var.environment}-api-latency-critical"
   alarm_description   = "Critical: p95 de latencia do API Gateway acima do limite severo."
@@ -301,7 +304,7 @@ resource "aws_cloudwatch_metric_alarm" "integration_failures_critical" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "os_processing_failures_warning" {
-  count = var.enabled && var.api_gateway_access_log_group_name != null ? 1 : 0
+  count = local.api_gateway_access_log_metrics_enabled ? 1 : 0
 
   alarm_name          = "oficina-${var.environment}-os-processing-failures-warning"
   alarm_description   = "Warning: falhas de processamento de OS detectadas no gateway."
@@ -320,7 +323,7 @@ resource "aws_cloudwatch_metric_alarm" "os_processing_failures_warning" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "os_processing_failures_critical" {
-  count = var.enabled && var.api_gateway_access_log_group_name != null ? 1 : 0
+  count = local.api_gateway_access_log_metrics_enabled ? 1 : 0
 
   alarm_name          = "oficina-${var.environment}-os-processing-failures-critical"
   alarm_description   = "Critical: volume alto de falhas de processamento de OS detectadas no gateway."
@@ -402,14 +405,14 @@ resource "aws_cloudwatch_dashboard" "this" {
               [
                 [local.metric_namespace, "IntegrationFailuresTotal", { label = "Falhas de integracao" }]
               ],
-              var.api_gateway_access_log_group_name != null ? [
+              local.api_gateway_access_log_metrics_enabled ? [
                 [local.metric_namespace, "OsProcessingFailuresTotal", { label = "Falhas de processamento OS" }]
               ] : []
             )
           }
         }
       ],
-      var.api_gateway_id != null ? [
+      local.api_gateway_latency_alarms_enabled ? [
         {
           type   = "metric"
           x      = 12
@@ -451,7 +454,7 @@ resource "aws_cloudwatch_dashboard" "this" {
           }
         }
       ] : [],
-      var.enable_route53_healthchecks && local.api_gateway_host != "" ? [
+      local.api_gateway_healthchecks_enabled ? [
         {
           type   = "metric"
           x      = 12

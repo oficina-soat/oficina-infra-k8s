@@ -9,12 +9,14 @@ Estrutura recomendada para este repositório:
 
 ## Laboratório
 
-O ponto de entrada do laboratório é `k8s/overlays/lab`.
+Os pontos de entrada do laboratório são:
 
 - `k8s/base/oficina-app/`: `Deployment` e `Service` da aplicação
 - `k8s/components/mailhog/`: componente de e-mail usado no laboratório
 - `k8s/addons/keycloak/`: addon opcional para demonstração
-- `k8s/overlays/lab/`: composição final do ambiente
+- `k8s/overlays/lab-platform/`: componentes de cluster gerenciados por este repositório, sem o `oficina-app`
+- `k8s/overlays/lab-app/`: `Deployment`, `Service` e `ConfigMap` do `oficina-app`
+- `k8s/overlays/lab/`: composição final do ambiente para renderização e validação integrada
 
 O Service `oficina-app` usa `type: NodePort` com `nodePort: 30080`. Esse valor é consumido pelo Terraform do ambiente `lab` para registrar os nodes do EKS em um NLB interno acessado pelo API Gateway via `VPC_LINK`; ele não cria um `LoadBalancer` Kubernetes público.
 
@@ -23,5 +25,7 @@ O componente `mailhog` mantém um Service `ClusterIP` para uso interno do cluste
 Renderização:
 
 ```bash
+kubectl kustomize k8s/overlays/lab-platform
+kubectl kustomize k8s/overlays/lab-app
 kubectl kustomize k8s/overlays/lab
 ```

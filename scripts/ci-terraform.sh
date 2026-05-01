@@ -20,6 +20,7 @@ BACKEND_S3_TEMPLATE="${TERRAFORM_DIR}/backend.s3.tf.example"
 EFFECTIVE_TF_STATE_BUCKET=""
 backend_override_file=""
 TERRAFORM_ECR_REPOSITORY_URL_FILE="${TERRAFORM_ECR_REPOSITORY_URL_FILE:-}"
+DELETE_SHARED_STATE_BUCKET="${DELETE_SHARED_STATE_BUCKET:-false}"
 
 cleanup() {
   if [[ -n "${backend_override_file}" && -f "${backend_override_file}" ]]; then
@@ -337,6 +338,63 @@ aws_bucket_exists() {
     --bucket "${EFFECTIVE_TF_STATE_BUCKET}" >/dev/null 2>&1
 }
 
+delete_bucket_object_versions() {
+  local bucket_name="$1"
+  local query="$2"
+  local entries=""
+  local key=""
+  local version_id=""
+
+  entries="$(
+    aws s3api list-object-versions \
+      --region "${TF_STATE_REGION}" \
+      --bucket "${bucket_name}" \
+      --query "${query}" \
+      --output text 2>/dev/null || true
+  )"
+
+  if [[ -z "${entries}" || "${entries}" == "None" ]]; then
+    return
+  fi
+
+  while IFS=$'\t' read -r key version_id; do
+    [[ -n "${key}" && "${key}" != "None" ]] || continue
+    [[ -n "${version_id}" && "${version_id}" != "None" ]] || continue
+
+    aws s3api delete-object \
+      --region "${TF_STATE_REGION}" \
+      --bucket "${bucket_name}" \
+      --key "${key}" \
+      --version-id "${version_id}" >/dev/null
+  done <<<"${entries}"
+}
+
+delete_shared_state_bucket_if_requested() {
+  local bucket_name="$1"
+
+  if ! is_truthy "${DELETE_SHARED_STATE_BUCKET}"; then
+    return
+  fi
+
+  if [[ -z "${bucket_name}" ]]; then
+    return
+  fi
+
+  if ! aws s3api head-bucket --region "${TF_STATE_REGION}" --bucket "${bucket_name}" >/dev/null 2>&1; then
+    log "Bucket compartilhado ${bucket_name} ja nao existe; seguindo"
+    return
+  fi
+
+  log "Removendo objetos versionados do bucket compartilhado ${bucket_name}"
+  delete_bucket_object_versions "${bucket_name}" 'Versions[].[Key,VersionId]'
+  delete_bucket_object_versions "${bucket_name}" 'DeleteMarkers[].[Key,VersionId]'
+
+  log "Removendo bucket compartilhado ${bucket_name}"
+  aws s3api delete-bucket \
+    --region "${TF_STATE_REGION}" \
+    --bucket "${bucket_name}" >/dev/null
+}
+
 remote_state_exists() {
   aws s3api head-object \
     --region "${TF_STATE_REGION}" \
@@ -550,6 +608,7 @@ run_destroy() {
   set_shared_bucket_mode
   set_ecr_repository_mode
   terraform_destroy
+  delete_shared_state_bucket_if_requested "${EFFECTIVE_TF_STATE_BUCKET}"
 }
 
 normalize_optional_envs

@@ -8,7 +8,7 @@ O projeto mantem tres workflows para o ambiente `lab`:
 
 ## Deploy Lab
 
-O workflow `Deploy Lab` valida o repositorio em `develop` e `main`. O deploy completo roda somente na branch `main`, aplicando a infraestrutura Terraform e, em seguida, o overlay Kubernetes do laboratorio com `oficina-app` e MailHog.
+O workflow `Deploy Lab` valida o repositorio em `develop` e `main`. O deploy roda somente na branch `main`, aplicando a infraestrutura Terraform e, em seguida, os componentes base do cluster no laboratorio. O `oficina-app` fica opt-in neste repositório.
 
 Gatilhos:
 
@@ -19,12 +19,14 @@ O job de validacao executa:
 
 - `terraform fmt -check -recursive terraform`
 - `terraform init -backend=false` e `terraform validate` no ambiente `lab`
+- `kubectl kustomize k8s/overlays/lab-platform`
+- `kubectl kustomize k8s/overlays/lab-app`
 - `kubectl kustomize k8s/overlays/lab`
 - `bash -n scripts/*.sh`
 
-O job de deploy roda depois da validacao apenas quando a ref e `main`. Ele usa o GitHub Environment `lab`, configura as credenciais AWS e executa `bash ./scripts/ci-deploy.sh`. Esse script faz bootstrap do backend S3 quando necessario, migra o state para o backend remoto, executa `terraform apply`, atualiza o kubeconfig do EKS e aplica o overlay `k8s/overlays/lab`.
+O job de deploy roda depois da validacao apenas quando a ref e `main`. Ele usa o GitHub Environment `lab`, configura as credenciais AWS e executa `bash ./scripts/ci-deploy.sh`. Esse script faz bootstrap do backend S3 quando necessario, migra o state para o backend remoto, executa `terraform apply`, atualiza o kubeconfig do EKS e aplica sempre o overlay `k8s/overlays/lab-platform`.
 
-O overlay `k8s/overlays/lab` inclui a aplicacao `oficina-app`, o `ConfigMap` da aplicacao e o componente MailHog. O deploy tambem cria ou atualiza os secrets Kubernetes necessarios para JWT e, quando configurado, para variaveis de banco.
+O overlay `k8s/overlays/lab-platform` inclui os pods e recursos de cluster que pertencem a este repositorio, como MailHog e observabilidade. Quando `DEPLOY_APP=true`, o mesmo fluxo tambem aplica `k8s/overlays/lab-app` e cria ou atualiza os secrets Kubernetes necessarios para JWT e, quando configurado, para variaveis de banco.
 
 Em pushes para `develop`, o workflow tambem abre automaticamente um pull request para `main` depois que o job de validacao passa. Antes de criar um novo PR, ele verifica se ha diferencas de conteudo entre `develop` e `main` e se ja existe um PR aberto de `develop` para `main`. Merges reversos de `main` para `develop` sem alteracao de arquivos nao geram novo PR.
 
@@ -42,7 +44,21 @@ Esse workflow exige state remoto existente. Rode `Deploy Lab` pelo menos uma vez
 
 ## Destroy Lab
 
-O workflow `Destroy Lab` desmonta o laboratorio inteiro. Ele exige confirmacao manual com o valor `DESTROY` e executa `bash ./scripts/ci-terraform.sh` com:
+O workflow `Destroy Lab` desmonta a suite inteira do laboratorio. Ele exige confirmacao manual com o valor `DESTROY` e executa primeiro `bash ./scripts/cleanup-suite-aws.sh`, seguido de `bash ./scripts/ci-terraform.sh`.
+
+O cleanup previo remove recursos que este repositorio nao gerencia diretamente no state, mas que ainda prendem a VPC compartilhada ou continuam cobrando:
+
+- `oficina-auth-lambda-lab`
+- `oficina-notificacao-lambda-lab`
+- log groups dessas Lambdas e o legado `/aws/lambda/OficinaAuthLambdaNative`
+- security group dedicado do `auth-lambda`
+- repositorio ECR da suite, mesmo com imagens
+- RDS `oficina-postgres-lab`
+- parameter group, subnet group, security group, role de monitoring, log groups e alarmes do banco
+- secrets runtime da suite no Secrets Manager, incluindo `oficina/lab/database/auth-lambda` e seus sub-secrets, quando `delete_runtime_secrets=true`
+- objetos de artefato das Lambdas no bucket configurado, quando `delete_lambda_artifact_objects=true`
+
+Depois desse cleanup, o workflow executa o destroy Terraform deste repositorio com:
 
 - `TERRAFORM_ACTION=destroy`
 - `TF_VAR_ecr_force_delete=true`
@@ -59,9 +75,11 @@ Com isso, o teardown remove, quando os recursos estiverem no state deste ambient
 - repositorio ECR criado por este ambiente, mesmo com imagens
 - bucket S3 compartilhado do Terraform quando ele pertence a este state, mesmo com objetos e versionamento
 
-Se o laboratorio estiver reutilizando um bucket de backend remoto ou um repositorio ECR externos ao state, o workflow os preserva por design.
+O input `skip_final_db_snapshot` controla se o RDS sera removido sem snapshot final. O default e `true`, alinhado ao objetivo de zerar custo quando o laboratorio nao estiver em uso.
 
-O workflow tambem expoe a opcao `delete_shared_jwt_secret`. Quando marcada, ele remove o secret compartilhado `oficina/lab/jwt` do Secrets Manager com `force-delete-without-recovery`. O secret de banco nao e tocado, porque ele pertence a outros fluxos/repositorios.
+O input `delete_shared_state_bucket` controla a remocao do bucket S3 compartilhado de state ao final do destroy. Quando `true`, ele remove o bucket inteiro, incluindo versionamento e qualquer state remoto ainda armazenado nele.
+
+Se o laboratorio estiver reutilizando um bucket de backend remoto ou um repositorio ECR externos ao state, o workflow os preserva por design, salvo quando `delete_shared_state_bucket=true`.
 
 ## Autenticacao AWS
 
@@ -80,7 +98,8 @@ Variaveis principais:
 - `AWS_REGION`
 - `EKS_CLUSTER_NAME`
 - `KUBERNETES_VERSION`
-- `IMAGE_REF` ou `IMAGE_TAG` para definir a imagem da aplicacao. Se ambos forem omitidos, o workflow tenta usar a tag mais recente do ECR configurado
+- `DEPLOY_APP`: default `false`; quando `true`, este workflow tambem aplica `k8s/overlays/lab-app`
+- `IMAGE_REF` ou `IMAGE_TAG` para definir a imagem da aplicacao quando `DEPLOY_APP=true`. Se ambos forem omitidos, o workflow tenta usar a tag mais recente do ECR configurado
 
 Se `KUBERNETES_VERSION` nao for informado em `vars`, o workflow usa o padrao `1.35`.
 

@@ -7,8 +7,23 @@ on:
         description: "Digite DESTROY para confirmar a remocao completa da infraestrutura do lab"
         required: true
         type: string
-      delete_shared_jwt_secret:
-        description: "Tambem remove o secret compartilhado de JWT no Secrets Manager"
+      delete_runtime_secrets:
+        description: "Tambem remove os secrets runtime compartilhados da suite no Secrets Manager"
+        required: true
+        default: true
+        type: boolean
+      skip_final_db_snapshot:
+        description: "Pula o snapshot final do RDS para zerar custo de armazenamento"
+        required: true
+        default: true
+        type: boolean
+      delete_lambda_artifact_objects:
+        description: "Tambem remove os objetos de artefato das Lambdas no bucket S3 configurado"
+        required: true
+        default: false
+        type: boolean
+      delete_shared_state_bucket:
+        description: "Tambem remove o bucket S3 compartilhado de state ao final do destroy, incluindo todos os versions e states remotos da suite"
         required: true
         default: false
         type: boolean
@@ -37,6 +52,28 @@ jobs:
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
       EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME || 'eks-lab' }}
+      DB_IDENTIFIER: ${{ vars.DB_IDENTIFIER || 'oficina-postgres-lab' }}
+      DB_PARAMETER_GROUP_NAME: ${{ vars.DB_PARAMETER_GROUP_NAME || format('{0}-pg', vars.DB_IDENTIFIER || 'oficina-postgres-lab') }}
+      DB_SUBNET_GROUP_NAME: ${{ vars.DB_SUBNET_GROUP_NAME || format('{0}-subnet-group', vars.DB_IDENTIFIER || 'oficina-postgres-lab') }}
+      DB_MONITORING_ROLE_NAME: ${{ vars.DB_MONITORING_ROLE_NAME || format('{0}-rds-monitoring', vars.DB_IDENTIFIER || 'oficina-postgres-lab') }}
+      DB_APP_SECRET_NAME: ${{ vars.K8S_DATABASE_SECRET_ID || 'oficina/lab/database/app' }}
+      AUTH_DB_SECRET_NAME: ${{ vars.AUTH_DB_SECRET_NAME || 'oficina/lab/database/auth-lambda' }}
+      AUTH_LAMBDA_FUNCTION_NAME: ${{ vars.AUTH_LAMBDA_FUNCTION_NAME || 'oficina-auth-lambda-lab' }}
+      AUTH_LAMBDA_LOG_GROUP_NAME: ${{ vars.AUTH_LAMBDA_LOG_GROUP_NAME || format('/aws/lambda/{0}', vars.AUTH_LAMBDA_FUNCTION_NAME || 'oficina-auth-lambda-lab') }}
+      AUTH_LAMBDA_LEGACY_LOG_GROUP_NAME: ${{ vars.AUTH_LAMBDA_LEGACY_LOG_GROUP_NAME || '/aws/lambda/OficinaAuthLambdaNative' }}
+      AUTH_LAMBDA_SECURITY_GROUP_NAME: ${{ vars.AUTH_LAMBDA_SECURITY_GROUP_NAME || format('{0}-sg', vars.AUTH_LAMBDA_FUNCTION_NAME || 'oficina-auth-lambda-lab') }}
+      NOTIFICACAO_LAMBDA_FUNCTION_NAME: ${{ vars.NOTIFICACAO_LAMBDA_FUNCTION_NAME || 'oficina-notificacao-lambda-lab' }}
+      NOTIFICACAO_LAMBDA_LOG_GROUP_NAME: ${{ vars.NOTIFICACAO_LAMBDA_LOG_GROUP_NAME || format('/aws/lambda/{0}', vars.NOTIFICACAO_LAMBDA_FUNCTION_NAME || 'oficina-notificacao-lambda-lab') }}
+      NOTIFICACAO_LAMBDA_SECURITY_GROUP_NAME: ${{ vars.NOTIFICACAO_LAMBDA_SECURITY_GROUP_NAME || vars.NOTIFICACAO_LAMBDA_SECURITY_GROUP || format('{0}-notificacao-lambda', vars.EKS_CLUSTER_NAME || 'eks-lab') }}
+      ECR_REPOSITORY_NAME: ${{ vars.ECR_REPOSITORY_NAME || 'oficina' }}
+      LAMBDA_ARTIFACT_BUCKET: ${{ vars.LAMBDA_ARTIFACT_BUCKET || vars.TF_STATE_BUCKET }}
+      AUTH_LAMBDA_ARTIFACT_PREFIX: ${{ vars.AUTH_LAMBDA_ARTIFACT_PREFIX || 'oficina/lab/lambda/oficina-auth-lambda' }}
+      NOTIFICACAO_LAMBDA_ARTIFACT_PREFIX: ${{ vars.NOTIFICACAO_LAMBDA_ARTIFACT_PREFIX || 'oficina/lab/lambda/oficina-notificacao-lambda' }}
+      DELETE_RUNTIME_SECRETS: ${{ inputs.delete_runtime_secrets }}
+      DELETE_LAMBDA_ARTIFACT_OBJECTS: ${{ inputs.delete_lambda_artifact_objects }}
+      DELETE_SHARED_STATE_BUCKET: ${{ inputs.delete_shared_state_bucket }}
+      SKIP_FINAL_DB_SNAPSHOT: ${{ inputs.skip_final_db_snapshot }}
+      DB_FINAL_SNAPSHOT_IDENTIFIER: ${{ vars.DB_FINAL_SNAPSHOT_IDENTIFIER || format('{0}-final', vars.DB_IDENTIFIER || 'oficina-postgres-lab') }}
       TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
       TF_STATE_KEY: ${{ vars.TF_STATE_KEY || 'oficina/lab/terraform.tfstate' }}
       TF_STATE_REGION: ${{ vars.TF_STATE_REGION || vars.AWS_REGION || 'us-east-1' }}
@@ -75,7 +112,7 @@ jobs:
       TF_VAR_observability_os_processing_failures_critical_threshold: ${{ vars.OBSERVABILITY_OS_PROCESSING_FAILURES_CRITICAL_THRESHOLD || '3' }}
       TF_VAR_observability_alarm_period_seconds: ${{ vars.OBSERVABILITY_ALARM_PERIOD_SECONDS || '300' }}
       K8S_JWT_SECRET_ID: ${{ vars.K8S_JWT_SECRET_ID || 'oficina/lab/jwt' }}
-      DELETE_SHARED_JWT_SECRET: ${{ inputs.delete_shared_jwt_secret }}
+      JWT_SECRET_NAME: ${{ vars.K8S_JWT_SECRET_ID || 'oficina/lab/jwt' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -100,20 +137,10 @@ jobs:
 
           aws sts get-caller-identity >/dev/null
 
+      - name: Cleanup suite AWS resources outside this Terraform state
+        shell: bash
+        run: bash ./scripts/cleanup-suite-aws.sh
+
       - name: Destroy lab infrastructure
         shell: bash
         run: bash ./scripts/ci-terraform.sh
-
-      - name: Delete shared JWT secret
-        if: env.DELETE_SHARED_JWT_SECRET == 'true'
-        shell: bash
-        run: |
-          if aws secretsmanager describe-secret --region "${AWS_REGION}" --secret-id "${K8S_JWT_SECRET_ID}" >/dev/null 2>&1; then
-            aws secretsmanager delete-secret \
-              --region "${AWS_REGION}" \
-              --secret-id "${K8S_JWT_SECRET_ID}" \
-              --force-delete-without-recovery >/dev/null
-            echo "Secret ${K8S_JWT_SECRET_ID} removido do Secrets Manager."
-          else
-            echo "Secret ${K8S_JWT_SECRET_ID} nao encontrado; seguindo."
-          fi

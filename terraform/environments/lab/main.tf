@@ -263,10 +263,12 @@ module "aws_native_observability" {
   environment                               = var.observability_environment_name
   region                                    = var.region
   cluster_name                              = var.cluster_name
+  api_gateway_enabled                       = var.create_api_gateway
   api_gateway_id                            = try(module.api_gateway[0].api_id, null)
   api_gateway_endpoint                      = try(module.api_gateway[0].api_endpoint, null)
   api_gateway_stage_name                    = var.api_gateway_stage_name
   api_gateway_access_log_group_name         = try(module.api_gateway[0].access_log_group_name, null)
+  api_gateway_access_logs_enabled           = var.create_api_gateway && var.api_gateway_enable_access_logs
   app_log_group_name                        = local.observability_app_log_group_name
   app_log_retention_in_days                 = var.observability_app_log_retention_in_days
   prometheus_log_group_name                 = local.observability_prometheus_log_group_name
