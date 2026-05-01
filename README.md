@@ -100,7 +100,7 @@ Variáveis principais:
 - `instance_type`, `desired_size`, `min_size` e `max_size`: dimensionamento do managed node group
 - `public_subnet_cidrs` e `azs`: rede mínima do laboratório
 - `cluster_endpoint_public_access_cidrs`: CIDRs permitidos no endpoint público do EKS
-- `ecr_repository_name` e `create_ecr_repository`: repositório ECR da aplicação
+- `ecr_repository_name` e `create_ecr_repository`: repositório ECR da aplicação. No `lab`, a criação fica habilitada por padrão
 - `create_api_gateway`: cria o HTTP API do laboratório. Padrão: `true`
 - `api_gateway_http_routes`: rotas `HTTP_PROXY` para expor a aplicação principal ou outros backends HTTP
 - `api_gateway_lambda_routes`: rotas `AWS_PROXY` para expor Lambdas existentes
@@ -341,7 +341,7 @@ Valores opcionais no Environment:
 - `EKS_PUBLIC_SUBNET_CIDRS`: lista JSON, por exemplo `["10.0.0.0/20","10.0.16.0/20"]`
 - `EKS_CLUSTER_ENDPOINT_PUBLIC_ACCESS_CIDRS`: lista JSON de CIDRs
 - `ECR_REPOSITORY_NAME`
-- `CREATE_ECR_REPOSITORY`
+- `CREATE_ECR_REPOSITORY`: default `true`; crie override para `false` apenas se quiser reaproveitar um ECR externo
 - `CREATE_API_GATEWAY`
 - `API_GATEWAY_NAME`
 - `API_GATEWAY_STAGE_NAME`
