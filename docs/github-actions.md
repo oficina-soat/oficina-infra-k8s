@@ -58,6 +58,8 @@ O cleanup previo remove recursos que este repositorio nao gerencia diretamente n
 - secrets runtime da suite no Secrets Manager, incluindo `oficina/lab/database/auth-lambda` e seus sub-secrets, quando `delete_runtime_secrets=true`
 - objetos de artefato das Lambdas no bucket configurado, quando `delete_lambda_artifact_objects=true`
 
+Antes de apagar as Lambdas, o cleanup remove a associacao VPC delas para acelerar a liberacao das ENIs. Se algum security group ainda estiver preso por ENIs da AWS, o script continua removendo os demais recursos da suite, tenta novamente no final e deixa o `terraform destroy` avancar. Se o destroy falhar por dependencias que acabaram de ser liberadas, o workflow roda um novo cleanup e repete o destroy uma vez. Os tempos podem ser ajustados por `NETWORK_INTERFACE_WAIT_SECONDS` e `FINAL_NETWORK_INTERFACE_WAIT_SECONDS`.
+
 Depois desse cleanup, o workflow executa o destroy Terraform deste repositorio com:
 
 - `TERRAFORM_ACTION=destroy`

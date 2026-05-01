@@ -53,8 +53,10 @@ jobs:
       AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
       EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME || 'eks-lab' }}
       DB_IDENTIFIER: ${{ vars.DB_IDENTIFIER || 'oficina-postgres-lab' }}
+      DB_PORT: ${{ vars.DB_PORT || '5432' }}
       DB_PARAMETER_GROUP_NAME: ${{ vars.DB_PARAMETER_GROUP_NAME || format('{0}-pg', vars.DB_IDENTIFIER || 'oficina-postgres-lab') }}
       DB_SUBNET_GROUP_NAME: ${{ vars.DB_SUBNET_GROUP_NAME || format('{0}-subnet-group', vars.DB_IDENTIFIER || 'oficina-postgres-lab') }}
+      DB_SECURITY_GROUP_NAME: ${{ vars.DB_SECURITY_GROUP_NAME || format('{0}-sg', vars.DB_IDENTIFIER || 'oficina-postgres-lab') }}
       DB_MONITORING_ROLE_NAME: ${{ vars.DB_MONITORING_ROLE_NAME || format('{0}-rds-monitoring', vars.DB_IDENTIFIER || 'oficina-postgres-lab') }}
       DB_APP_SECRET_NAME: ${{ vars.K8S_DATABASE_SECRET_ID || 'oficina/lab/database/app' }}
       AUTH_DB_SECRET_NAME: ${{ vars.AUTH_DB_SECRET_NAME || 'oficina/lab/database/auth-lambda' }}
@@ -72,8 +74,11 @@ jobs:
       DELETE_RUNTIME_SECRETS: ${{ inputs.delete_runtime_secrets }}
       DELETE_LAMBDA_ARTIFACT_OBJECTS: ${{ inputs.delete_lambda_artifact_objects }}
       DELETE_SHARED_STATE_BUCKET: ${{ inputs.delete_shared_state_bucket }}
+      FAIL_ON_DEFERRED_SECURITY_GROUPS: ${{ vars.FAIL_ON_DEFERRED_SECURITY_GROUPS || 'false' }}
       SKIP_FINAL_DB_SNAPSHOT: ${{ inputs.skip_final_db_snapshot }}
       DB_FINAL_SNAPSHOT_IDENTIFIER: ${{ vars.DB_FINAL_SNAPSHOT_IDENTIFIER || format('{0}-final', vars.DB_IDENTIFIER || 'oficina-postgres-lab') }}
+      NETWORK_INTERFACE_WAIT_SECONDS: ${{ vars.NETWORK_INTERFACE_WAIT_SECONDS || '900' }}
+      FINAL_NETWORK_INTERFACE_WAIT_SECONDS: ${{ vars.FINAL_NETWORK_INTERFACE_WAIT_SECONDS || '1800' }}
       TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
       TF_STATE_KEY: ${{ vars.TF_STATE_KEY || 'oficina/lab/terraform.tfstate' }}
       TF_STATE_REGION: ${{ vars.TF_STATE_REGION || vars.AWS_REGION || 'us-east-1' }}
@@ -142,5 +147,17 @@ jobs:
         run: bash ./scripts/cleanup-suite-aws.sh
 
       - name: Destroy lab infrastructure
+        id: destroy_lab
+        continue-on-error: true
+        shell: bash
+        run: bash ./scripts/ci-terraform.sh
+
+      - name: Retry cleanup after failed destroy
+        if: steps.destroy_lab.outcome == 'failure'
+        shell: bash
+        run: bash ./scripts/cleanup-suite-aws.sh
+
+      - name: Retry destroy lab infrastructure
+        if: steps.destroy_lab.outcome == 'failure'
         shell: bash
         run: bash ./scripts/ci-terraform.sh

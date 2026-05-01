@@ -424,6 +424,8 @@ O `Destroy Lab` remove, quando existirem:
 - secrets runtime compartilhados da suíte no Secrets Manager, como `oficina/lab/jwt`, `oficina/lab/database/app`, `oficina/lab/database/auth-lambda` e seus sub-secrets, quando `delete_runtime_secrets=true`
 - objetos de artefato das Lambdas no bucket S3 configurado, quando `delete_lambda_artifact_objects=true`
 
+Antes de apagar as Lambdas, o cleanup remove a associação VPC delas para acelerar a liberação das ENIs. Se algum security group continuar preso por ENIs da AWS, o workflow continua limpando os demais recursos da suíte, deixa o `terraform destroy` avançar e, se necessário, roda um novo cleanup seguido de uma nova tentativa de destroy. Os tempos são configuráveis por `NETWORK_INTERFACE_WAIT_SECONDS` e `FINAL_NETWORK_INTERFACE_WAIT_SECONDS`.
+
 Depois disso, o workflow destrói, quando gerenciados por este repositório/state:
 
 - VPC, subnets públicas, internet gateway, route table e associações
