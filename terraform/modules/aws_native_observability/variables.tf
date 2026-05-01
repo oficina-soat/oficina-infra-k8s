@@ -19,6 +19,12 @@ variable "cluster_name" {
   description = "Nome do cluster EKS."
 }
 
+variable "api_gateway_enabled" {
+  type        = bool
+  description = "Quando true, a stack observa um API Gateway gerenciado neste ambiente."
+  default     = false
+}
+
 variable "api_gateway_id" {
   type        = string
   description = "ID do HTTP API monitorado."
@@ -44,6 +50,12 @@ variable "api_gateway_access_log_group_name" {
   description = "Log group dos access logs do API Gateway."
   default     = null
   nullable    = true
+}
+
+variable "api_gateway_access_logs_enabled" {
+  type        = bool
+  description = "Quando true, os access logs do API Gateway estao habilitados neste ambiente."
+  default     = false
 }
 
 variable "app_log_group_name" {
