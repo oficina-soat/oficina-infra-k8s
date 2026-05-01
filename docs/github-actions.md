@@ -140,6 +140,7 @@ Variaveis opcionais:
 - `OBSERVABILITY_ENABLE_DASHBOARD`: default `true`
 - `OBSERVABILITY_ENABLE_ROUTE53_HEALTHCHECKS`: default `true`
 - `OBSERVABILITY_ENABLE_K8S_RESOURCE_METRICS`: default `true`; quando `false`, o deploy aplica `cwagent-prometheus` com `replicas=0`
+- `OBSERVABILITY_MANAGE_NODE_ROLE_POLICY_ATTACHMENT`: default `false`; use `true` apenas quando o runner puder executar `iam:AttachRolePolicy` na role dos nodes do EKS
 - `OBSERVABILITY_ALERT_EMAIL_ENDPOINTS`: lista JSON de emails inscritos nos tópicos SNS, por exemplo `["ops@example.com"]`
 - `OBSERVABILITY_APP_LOG_RETENTION_IN_DAYS`: default `14`
 - `OBSERVABILITY_PROMETHEUS_LOG_RETENTION_IN_DAYS`: default `7`
