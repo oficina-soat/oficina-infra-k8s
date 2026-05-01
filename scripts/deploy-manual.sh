@@ -26,7 +26,8 @@ OBSERVABILITY_FLUENT_BIT_IMAGE="${OBSERVABILITY_FLUENT_BIT_IMAGE:-public.ecr.aws
 OBSERVABILITY_CWAGENT_IMAGE="${OBSERVABILITY_CWAGENT_IMAGE:-public.ecr.aws/cloudwatch-agent/cloudwatch-agent:1.300066.1}"
 DB_SECRET_NAME="oficina-database-env"
 APP_NAMESPACE="default"
-APP_ENV_DIR="k8s/overlays/lab"
+PLATFORM_ENV_DIR="k8s/overlays/lab-platform"
+APP_ENV_DIR="k8s/overlays/lab-app"
 
 usage() {
   cat <<EOF
@@ -36,7 +37,7 @@ Uso:
 Variaveis suportadas:
   IMAGE_REF              Imagem da aplicacao. Obrigatoria se DEPLOY_APP=true
   UPDATE_KUBECONFIG      true|false. Default: false
-  EKS_CLUSTER_NAME       Obrigatoria se UPDATE_KUBECONFIG=true
+  EKS_CLUSTER_NAME       Obrigatoria para renderizar os overlays do laboratorio
   AWS_REGION             Regiao AWS. Default: us-east-1
   DEPLOY_APP             true|false. Default: true
   DEPLOY_KEYCLOAK        true|false. Default: false
@@ -201,19 +202,13 @@ escape_sed_replacement() {
   printf '%s' "$1" | sed -e 's/[&|\\]/\\&/g'
 }
 
-render_overlay() {
-  local escaped_image_ref
-  local escaped_auth_issuer
-  local escaped_auth_jwks_uri
+render_platform_overlay() {
   local escaped_observability_app_log_group_name
   local escaped_observability_prometheus_log_group_name
   local escaped_observability_fluent_bit_image
   local escaped_observability_cwagent_image
   local observability_cwagent_replicas
   local observability_node_os_selector
-  escaped_image_ref="$(escape_sed_replacement "${IMAGE_REF}")"
-  escaped_auth_issuer="$(escape_sed_replacement "${OFICINA_AUTH_ISSUER}")"
-  escaped_auth_jwks_uri="$(escape_sed_replacement "${OFICINA_AUTH_JWKS_URI}")"
   escaped_observability_app_log_group_name="$(escape_sed_replacement "${OBSERVABILITY_APP_LOG_GROUP_NAME}")"
   escaped_observability_prometheus_log_group_name="$(escape_sed_replacement "${OBSERVABILITY_PROMETHEUS_LOG_GROUP_NAME}")"
   escaped_observability_fluent_bit_image="$(escape_sed_replacement "${OBSERVABILITY_FLUENT_BIT_IMAGE}")"
@@ -228,10 +223,7 @@ render_overlay() {
   else
     observability_cwagent_replicas="0"
   fi
-  kubectl kustomize "${APP_ENV_DIR}" |
-    sed "s|IMAGE_PLACEHOLDER|${escaped_image_ref}|g" |
-    sed "s|OFICINA_AUTH_ISSUER_PLACEHOLDER|${escaped_auth_issuer}|g" |
-    sed "s|OFICINA_AUTH_JWKS_URI_PLACEHOLDER|${escaped_auth_jwks_uri}|g" |
+  kubectl kustomize "${PLATFORM_ENV_DIR}" |
     sed "s|OBSERVABILITY_CLUSTER_NAME_PLACEHOLDER|${EKS_CLUSTER_NAME}|g" |
     sed "s|OBSERVABILITY_AWS_REGION_PLACEHOLDER|${AWS_REGION}|g" |
     sed "s|OBSERVABILITY_APP_LOG_GROUP_PLACEHOLDER|${escaped_observability_app_log_group_name}|g" |
@@ -242,22 +234,37 @@ render_overlay() {
     sed "s|OBSERVABILITY_CWAGENT_IMAGE_PLACEHOLDER|${escaped_observability_cwagent_image}|g"
 }
 
+render_app_overlay() {
+  local escaped_image_ref
+  local escaped_auth_issuer
+  local escaped_auth_jwks_uri
+
+  escaped_image_ref="$(escape_sed_replacement "${IMAGE_REF}")"
+  escaped_auth_issuer="$(escape_sed_replacement "${OFICINA_AUTH_ISSUER}")"
+  escaped_auth_jwks_uri="$(escape_sed_replacement "${OFICINA_AUTH_JWKS_URI}")"
+
+  kubectl kustomize "${APP_ENV_DIR}" |
+    sed "s|IMAGE_PLACEHOLDER|${escaped_image_ref}|g" |
+    sed "s|OFICINA_AUTH_ISSUER_PLACEHOLDER|${escaped_auth_issuer}|g" |
+    sed "s|OFICINA_AUTH_JWKS_URI_PLACEHOLDER|${escaped_auth_jwks_uri}|g"
+}
+
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   usage
   exit 0
 fi
 
 require_cmd kubectl
-require_cmd openssl
 require_cmd sed
 prepare_auth_config
+require_non_empty "${EKS_CLUSTER_NAME}" "EKS_CLUSTER_NAME"
 
 if [[ "${UPDATE_KUBECONFIG}" == "true" ]]; then
   require_cmd aws
-  require_non_empty "${EKS_CLUSTER_NAME}" "EKS_CLUSTER_NAME"
 fi
 
 if [[ "${DEPLOY_APP}" == "true" ]]; then
+  require_cmd openssl
   require_non_empty "${EKS_CLUSTER_NAME}" "EKS_CLUSTER_NAME"
   require_non_empty "${IMAGE_REF}" "IMAGE_REF"
 fi
@@ -271,6 +278,7 @@ EKS_CLUSTER_NAME=${EKS_CLUSTER_NAME}
 UPDATE_KUBECONFIG=${UPDATE_KUBECONFIG}
 IMAGE_REF=${IMAGE_REF}
 APP_NAMESPACE=${APP_NAMESPACE}
+PLATFORM_ENV_DIR=${PLATFORM_ENV_DIR}
 APP_ENV_DIR=${APP_ENV_DIR}
 DEPLOY_APP=${DEPLOY_APP}
 DEPLOY_KEYCLOAK=${DEPLOY_KEYCLOAK}
@@ -292,6 +300,11 @@ if [[ "${UPDATE_KUBECONFIG}" == "true" ]]; then
   log "Atualizando kubeconfig do cluster ${EKS_CLUSTER_NAME}"
   aws eks update-kubeconfig --region "${AWS_REGION}" --name "${EKS_CLUSTER_NAME}"
 fi
+
+log "Aplicando dependencias base do laboratorio"
+render_platform_overlay | kubectl apply -f -
+
+kubectl rollout status deployment/mailhog --namespace "${APP_NAMESPACE}" --timeout=180s
 
 if [[ "${DEPLOY_APP}" == "true" ]]; then
   if secret_exists "${APP_NAMESPACE}" "${DB_SECRET_NAME}"; then
@@ -320,12 +333,10 @@ if [[ "${DEPLOY_APP}" == "true" ]]; then
     --dry-run=client -o yaml | kubectl apply -f -
 
   log "Aplicando ambiente de laboratorio da aplicacao"
-  render_overlay | kubectl apply -f -
+  render_app_overlay | kubectl apply -f -
 
   log "Reiniciando deployment oficina-app para aplicar secrets/configmaps atualizados"
   kubectl rollout restart deployment/oficina-app --namespace "${APP_NAMESPACE}"
-
-  kubectl rollout status deployment/mailhog --namespace "${APP_NAMESPACE}" --timeout=180s
 
   if ! kubectl rollout status deployment/oficina-app --namespace "${APP_NAMESPACE}" --timeout=300s; then
     show_app_diagnostics

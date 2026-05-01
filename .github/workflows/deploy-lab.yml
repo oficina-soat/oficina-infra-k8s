@@ -39,6 +39,8 @@ jobs:
           terraform fmt -check -recursive terraform
           terraform -chdir=terraform/environments/lab init -backend=false -input=false
           terraform -chdir=terraform/environments/lab validate
+          kubectl kustomize k8s/overlays/lab-platform >/tmp/oficina-lab-platform-rendered.yaml
+          kubectl kustomize k8s/overlays/lab-app >/tmp/oficina-lab-app-rendered.yaml
           kubectl kustomize k8s/overlays/lab >/tmp/oficina-lab-rendered.yaml
           bash -n scripts/*.sh
 
@@ -59,7 +61,7 @@ jobs:
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
       EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME || 'eks-lab' }}
-      DEPLOY_APP: "true"
+      DEPLOY_APP: ${{ vars.DEPLOY_APP || 'false' }}
       IMAGE_REF: ${{ vars.IMAGE_REF }}
       IMAGE_TAG: ${{ vars.IMAGE_TAG }}
       DEPLOY_KEYCLOAK: ${{ vars.DEPLOY_KEYCLOAK || 'false' }}

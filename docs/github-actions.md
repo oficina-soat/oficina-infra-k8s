@@ -8,7 +8,7 @@ O projeto mantem tres workflows para o ambiente `lab`:
 
 ## Deploy Lab
 
-O workflow `Deploy Lab` valida o repositorio em `develop` e `main`. O deploy completo roda somente na branch `main`, aplicando a infraestrutura Terraform e, em seguida, o overlay Kubernetes do laboratorio com `oficina-app` e MailHog.
+O workflow `Deploy Lab` valida o repositorio em `develop` e `main`. O deploy roda somente na branch `main`, aplicando a infraestrutura Terraform e, em seguida, os componentes base do cluster no laboratorio. O `oficina-app` fica opt-in neste repositório.
 
 Gatilhos:
 
@@ -19,12 +19,14 @@ O job de validacao executa:
 
 - `terraform fmt -check -recursive terraform`
 - `terraform init -backend=false` e `terraform validate` no ambiente `lab`
+- `kubectl kustomize k8s/overlays/lab-platform`
+- `kubectl kustomize k8s/overlays/lab-app`
 - `kubectl kustomize k8s/overlays/lab`
 - `bash -n scripts/*.sh`
 
-O job de deploy roda depois da validacao apenas quando a ref e `main`. Ele usa o GitHub Environment `lab`, configura as credenciais AWS e executa `bash ./scripts/ci-deploy.sh`. Esse script faz bootstrap do backend S3 quando necessario, migra o state para o backend remoto, executa `terraform apply`, atualiza o kubeconfig do EKS e aplica o overlay `k8s/overlays/lab`.
+O job de deploy roda depois da validacao apenas quando a ref e `main`. Ele usa o GitHub Environment `lab`, configura as credenciais AWS e executa `bash ./scripts/ci-deploy.sh`. Esse script faz bootstrap do backend S3 quando necessario, migra o state para o backend remoto, executa `terraform apply`, atualiza o kubeconfig do EKS e aplica sempre o overlay `k8s/overlays/lab-platform`.
 
-O overlay `k8s/overlays/lab` inclui a aplicacao `oficina-app`, o `ConfigMap` da aplicacao e o componente MailHog. O deploy tambem cria ou atualiza os secrets Kubernetes necessarios para JWT e, quando configurado, para variaveis de banco.
+O overlay `k8s/overlays/lab-platform` inclui os pods e recursos de cluster que pertencem a este repositorio, como MailHog e observabilidade. Quando `DEPLOY_APP=true`, o mesmo fluxo tambem aplica `k8s/overlays/lab-app` e cria ou atualiza os secrets Kubernetes necessarios para JWT e, quando configurado, para variaveis de banco.
 
 Em pushes para `develop`, o workflow tambem abre automaticamente um pull request para `main` depois que o job de validacao passa. Antes de criar um novo PR, ele verifica se ha diferencas de conteudo entre `develop` e `main` e se ja existe um PR aberto de `develop` para `main`. Merges reversos de `main` para `develop` sem alteracao de arquivos nao geram novo PR.
 
@@ -96,7 +98,8 @@ Variaveis principais:
 - `AWS_REGION`
 - `EKS_CLUSTER_NAME`
 - `KUBERNETES_VERSION`
-- `IMAGE_REF` ou `IMAGE_TAG` para definir a imagem da aplicacao. Se ambos forem omitidos, o workflow tenta usar a tag mais recente do ECR configurado
+- `DEPLOY_APP`: default `false`; quando `true`, este workflow tambem aplica `k8s/overlays/lab-app`
+- `IMAGE_REF` ou `IMAGE_TAG` para definir a imagem da aplicacao quando `DEPLOY_APP=true`. Se ambos forem omitidos, o workflow tenta usar a tag mais recente do ECR configurado
 
 Se `KUBERNETES_VERSION` nao for informado em `vars`, o workflow usa o padrao `1.35`.
 

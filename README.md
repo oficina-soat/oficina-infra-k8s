@@ -2,7 +2,7 @@
 
 Infraestrutura Terraform e Kubernetes da Oficina com baseline voltado para laboratório acadêmico, priorizando simplicidade operacional e baixo custo.
 
-O projeto provisiona a base da nuvem e publica a aplicação com:
+O projeto provisiona a base da nuvem e converge o cluster do laboratório com:
 
 - VPC enxuta com duas sub-redes públicas para evitar NAT Gateway
 - cluster Amazon EKS com managed node group mínimo para laboratório
@@ -10,7 +10,7 @@ O projeto provisiona a base da nuvem e publica a aplicação com:
 - API Gateway HTTP API com logs e throttling, pronto para expor app HTTP e Lambdas de forma opcional
 - manifests Kubernetes organizados com `kustomize` em `base`, `components`, `addons` e `overlays`
 - telemetria vendor-neutral preparada com logs JSON, OpenTelemetry e probes HTTP no `oficina-app`
-- workflow de GitHub Actions para validar `develop`, promover mudanças para `main` via PR e fazer deploy completo após merge em `main`
+- workflow de GitHub Actions para validar `develop`, promover mudanças para `main` via PR e convergir a infraestrutura e os componentes base do cluster após merge em `main`
 - workflow manual de GitHub Actions para desativar somente o EKS sem remover VPC, ECR, API Gateway e state remoto
 
 ## O que este projeto não cria
@@ -40,6 +40,8 @@ O repositório segue um layout em diretórios:
 - `k8s/base/oficina-app`: `Deployment` e `Service` base da aplicação
 - `k8s/components/mailhog`: componente de e-mail usado no laboratório
 - `k8s/addons/keycloak`: addon opcional para demonstração
+- `k8s/overlays/lab-platform`: componentes base do cluster gerenciados por este repositório
+- `k8s/overlays/lab-app`: recursos do `oficina-app`
 - `k8s/overlays/lab`: composição final do ambiente Kubernetes
 - `scripts/`: automações operacionais e de CI
 - `docs/telemetria.md`: convenção de telemetria vendor-neutral da suíte
@@ -279,9 +281,10 @@ IMAGE_REF=<registry>/oficina:<tag> \
 
 O script:
 
-- reutiliza o secret `oficina-database-env` quando ele existir
-- reutiliza chaves JWT em `JWT_DIR`; se ausentes, gera um par local
-- aplica o overlay `k8s/overlays/lab`
+- aplica sempre o overlay `k8s/overlays/lab-platform`
+- reutiliza o secret `oficina-database-env` quando ele existir, apenas quando `DEPLOY_APP=true`
+- reutiliza chaves JWT em `JWT_DIR`; se ausentes, gera um par local, apenas quando `DEPLOY_APP=true`
+- aplica o overlay `k8s/overlays/lab-app` somente quando `DEPLOY_APP=true`
 - opcionalmente publica o addon `k8s/addons/keycloak`
 
 Para acesso local:
@@ -294,7 +297,7 @@ Para acesso local:
 
 O repositório mantém três workflows para o ambiente de laboratório:
 
-- [`.github/workflows/deploy-lab.yml`](.github/workflows/deploy-lab.yml): valida o repositório, aplica a infraestrutura Terraform e publica a aplicação no EKS
+- [`.github/workflows/deploy-lab.yml`](.github/workflows/deploy-lab.yml): valida o repositório, aplica a infraestrutura Terraform e converge os componentes base do cluster no EKS
 - [`.github/workflows/eks-deactivate-lab.yml`](.github/workflows/eks-deactivate-lab.yml): remove somente o módulo EKS para reduzir custo quando o laboratório estiver parado
 - [`.github/workflows/destroy-lab.yml`](.github/workflows/destroy-lab.yml): remove a infraestrutura completa criada pelo repositório para zerar o custo recorrente do laboratório quando ele não estiver em uso
 
@@ -302,7 +305,7 @@ O workflow `Deploy Lab` executa em pushes para `develop` e `main`. O job `valida
 
 Em pushes para `develop`, depois que o job `validate` passa, o workflow abre automaticamente um pull request para `main` quando ainda não existir um PR aberto e houver diferença de conteúdo entre as branches. Merges reversos de `main` para `develop` sem mudança de arquivos não geram novo PR.
 
-No deploy em `main`, o workflow executa `scripts/ci-deploy.sh`. Esse script aplica o Terraform, atualiza o kubeconfig do EKS e aplica o overlay `k8s/overlays/lab`, que inclui `oficina-app`, `oficina-app-config` e MailHog. O workflow tenta publicar a aplicação sempre; se `IMAGE_REF` não for informado, ele resolve a imagem pela tag `IMAGE_TAG` ou pela tag mais recente disponível no ECR configurado. Se nenhuma imagem válida existir, o deploy falha em vez de seguir sem a oficina.
+No deploy em `main`, o workflow executa `scripts/ci-deploy.sh`. Esse script aplica o Terraform, atualiza o kubeconfig do EKS e aplica sempre o overlay `k8s/overlays/lab-platform`, que inclui MailHog e observabilidade. O `oficina-app` fica fora do fluxo padrao deste repositório e só entra quando `DEPLOY_APP=true`; nesse modo, o script também aplica `k8s/overlays/lab-app`, resolve `IMAGE_REF` a partir de `IMAGE_REF`, `IMAGE_TAG` ou da tag mais recente do ECR configurado, e prepara os secrets de JWT e banco quando necessário.
 
 Os jobs usam o GitHub Environment `lab` para centralizar `vars` e `secrets`.
 
@@ -315,7 +318,8 @@ Valores esperados no Environment:
 - `AWS_REGION`
 - `EKS_CLUSTER_NAME`
 - `KUBERNETES_VERSION`
-- `IMAGE_REF` ou `IMAGE_TAG`: imagem da aplicação. Se ambos forem omitidos, o workflow tenta usar a tag mais recente do ECR configurado
+- `DEPLOY_APP`: default `false`; quando `true`, este workflow tambem aplica `k8s/overlays/lab-app`
+- `IMAGE_REF` ou `IMAGE_TAG`: imagem da aplicação quando `DEPLOY_APP=true`. Se ambos forem omitidos, o workflow tenta usar a tag mais recente do ECR configurado
 - `AWS_ACCESS_KEY_ID`: credencial AWS em `secrets`
 - `AWS_SECRET_ACCESS_KEY`: credencial AWS em `secrets`
 - `AWS_SESSION_TOKEN`: opcional, mas necessário quando o laboratório entregar credenciais temporárias
@@ -441,6 +445,8 @@ O workflow preserva recursos externos que o laboratório apenas reutiliza, como 
 ```bash
 terraform fmt -check -recursive terraform
 terraform -chdir=terraform/environments/lab validate
+kubectl kustomize k8s/overlays/lab-platform >/tmp/oficina-lab-platform-rendered.yaml
+kubectl kustomize k8s/overlays/lab-app >/tmp/oficina-lab-app-rendered.yaml
 kubectl kustomize k8s/overlays/lab >/tmp/oficina-lab-rendered.yaml
 bash -n scripts/*.sh
 ```
