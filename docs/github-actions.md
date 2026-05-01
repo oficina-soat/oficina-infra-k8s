@@ -96,10 +96,43 @@ Variaveis opcionais:
 - `OFICINA_APP_API_GATEWAY_JWT_AUTHORIZER_ENABLED`: default `false`; quando `true`, protege as rotas padrao da aplicacao com JWT
 - `OFICINA_APP_API_GATEWAY_JWT_ISSUER`: issuer do authorizer; quando ausente, usa o endpoint publico do proprio HTTP API
 - `OFICINA_APP_API_GATEWAY_JWT_AUDIENCE`: lista JSON de audiences; default `["oficina-app"]`
-- `OFICINA_APP_API_GATEWAY_JWT_SCOPES`: lista JSON de scopes exigidos pelo authorizer; default `[]`
+- `OFICINA_APP_API_GATEWAY_JWT_SCOPES`: lista JSON de scopes exigidos pelo authorizer; default `["oficina-app"]`
 - `OFICINA_AUTH_ISSUER`: issuer repassado ao ConfigMap da aplicacao; quando ausente no deploy integrado, e derivado do endpoint do API Gateway
 - `OFICINA_AUTH_JWKS_URI`: JWKS repassado ao ConfigMap da aplicacao; quando ausente no deploy integrado, e derivado de `OFICINA_AUTH_ISSUER`
 - `OFICINA_AUTH_FORCE_LEGACY`: default `false`; quando `true`, preserva explicitamente o modo legado `oficina-api` + `file:/jwt/publicKey.pem`
+- `OFICINA_OBSERVABILITY_ENABLED`: default `true`; prepara logs JSON, tracing e contratos de telemetria do `oficina-app`
+- `OFICINA_OBSERVABILITY_JSON_LOGS_ENABLED`: default `true`
+- `OFICINA_OBSERVABILITY_METRICS_ENABLED`: default `true`
+- `OFICINA_OBSERVABILITY_TRACING_ENABLED`: default `true`
+- `OTEL_SERVICE_NAME`: default `oficina-app`
+- `OTEL_RESOURCE_ATTRIBUTES`: default `service.namespace=oficina,deployment.environment=lab`
+- `OTEL_EXPORTER_OTLP_ENDPOINT`: default vazio nesta fase
+- `OTEL_EXPORTER_OTLP_PROTOCOL`: default `grpc`
+- `OTEL_TRACES_EXPORTER`: default `none`
+- `OTEL_METRICS_EXPORTER`: default `none`
+- `OTEL_LOGS_EXPORTER`: default `none`
+- `OBSERVABILITY_ENABLED`: default `true`; liga a stack AWS-native de observabilidade
+- `OBSERVABILITY_ENVIRONMENT_NAME`: default `lab`
+- `OBSERVABILITY_ENABLE_DASHBOARD`: default `true`
+- `OBSERVABILITY_ENABLE_ROUTE53_HEALTHCHECKS`: default `true`
+- `OBSERVABILITY_ENABLE_K8S_RESOURCE_METRICS`: default `true`; quando `false`, o deploy aplica `cwagent-prometheus` com `replicas=0`
+- `OBSERVABILITY_ALERT_EMAIL_ENDPOINTS`: lista JSON de emails inscritos nos tópicos SNS, por exemplo `["ops@example.com"]`
+- `OBSERVABILITY_APP_LOG_RETENTION_IN_DAYS`: default `14`
+- `OBSERVABILITY_PROMETHEUS_LOG_RETENTION_IN_DAYS`: default `7`
+- `OBSERVABILITY_METRIC_NAMESPACE`: default `Oficina/Observability`
+- `OBSERVABILITY_API_LATENCY_WARNING_THRESHOLD_MS`: default `1500`
+- `OBSERVABILITY_API_LATENCY_CRITICAL_THRESHOLD_MS`: default `3000`
+- `OBSERVABILITY_INTEGRATION_FAILURES_WARNING_THRESHOLD`: default `1`
+- `OBSERVABILITY_INTEGRATION_FAILURES_CRITICAL_THRESHOLD`: default `3`
+- `OBSERVABILITY_OS_PROCESSING_FAILURES_WARNING_THRESHOLD`: default `1`
+- `OBSERVABILITY_OS_PROCESSING_FAILURES_CRITICAL_THRESHOLD`: default `3`
+- `OBSERVABILITY_ALARM_PERIOD_SECONDS`: default `300`
+- `OBSERVABILITY_APP_LOG_GROUP_NAME`: default `/oficina/lab/eks/oficina-app`
+- `OBSERVABILITY_PROMETHEUS_LOG_GROUP_NAME`: default `/aws/containerinsights/<EKS_CLUSTER_NAME>/prometheus`
+- `OBSERVABILITY_FLUENT_BIT_IMAGE`: default `public.ecr.aws/aws-observability/aws-for-fluent-bit:2.34.3.20260423`
+- `OBSERVABILITY_CWAGENT_IMAGE`: default `public.ecr.aws/cloudwatch-agent/cloudwatch-agent:1.300066.1`
+
+Quando `OFICINA_APP_API_GATEWAY_JWT_AUTHORIZER_ENABLED=true`, o workflow passa a aplicar no `oficina-app` um JWT authorizer com issuer do gateway atual (ou override explicito), audience `["oficina-app"]` e scope `["oficina-app"]` por default. Nesse modo, o gateway protege a aplicacao por default e deixa publicos apenas `/q/swagger-ui`, `/q/swagger-ui/`, `/q/swagger-ui/*`, `GET /q/health/live`, `GET /q/health/ready` e as rotas vigentes de magic link.
 - `CREATE_TERRAFORM_SHARED_DATA_BUCKET`
 - `TERRAFORM_SHARED_DATA_BUCKET_NAME`
 - `TERRAFORM_SHARED_DATA_BUCKET_FORCE_DESTROY`

@@ -3,5 +3,6 @@ kind: Kustomization
 namespace: default
 resources:
   - ../../base/oficina-app
+  - ../../components/aws-observability
   - ../../components/mailhog
   - app-config.yaml

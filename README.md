@@ -9,6 +9,7 @@ O projeto provisiona a base da nuvem e publica a aplicação com:
 - repositório Amazon ECR opcional para a imagem da aplicação
 - API Gateway HTTP API com logs e throttling, pronto para expor app HTTP e Lambdas de forma opcional
 - manifests Kubernetes organizados com `kustomize` em `base`, `components`, `addons` e `overlays`
+- telemetria vendor-neutral preparada com logs JSON, OpenTelemetry e probes HTTP no `oficina-app`
 - workflow de GitHub Actions para validar `develop`, promover mudanças para `main` via PR e fazer deploy completo após merge em `main`
 - workflow manual de GitHub Actions para desativar somente o EKS sem remover VPC, ECR, API Gateway e state remoto
 
@@ -41,6 +42,7 @@ O repositório segue um layout em diretórios:
 - `k8s/addons/keycloak`: addon opcional para demonstração
 - `k8s/overlays/lab`: composição final do ambiente Kubernetes
 - `scripts/`: automações operacionais e de CI
+- `docs/telemetria.md`: convenção de telemetria vendor-neutral da suíte
 
 ## Estado do Terraform
 
@@ -102,6 +104,10 @@ Variáveis principais:
 - `api_gateway_lambda_routes`: rotas `AWS_PROXY` para expor Lambdas existentes
 - `api_gateway_vpc_link_subnet_ids`, `api_gateway_vpc_link_security_group_ids` e `api_gateway_create_vpc_link_security_group`: usados apenas quando uma rota HTTP precisar de integração privada via `VPC_LINK`
 - `expose_oficina_app_api_gateway`: publica o `oficina-app` na raiz do HTTP API usando `VPC_LINK`, NLB interno e o `NodePort` do Service Kubernetes. Padrão: `true`
+- `oficina_app_api_gateway_jwt_authorizer_enabled`: quando `true`, ativa o JWT authorizer nativo do HTTP API nas rotas padrão do `oficina-app`
+- `oficina_app_api_gateway_jwt_issuer`: issuer esperado para os access tokens; se omitido, usa o endpoint público do próprio HTTP API
+- `oficina_app_api_gateway_jwt_audience`: audience do authorizer. Contrato atual: `["oficina-app"]`
+- `oficina_app_api_gateway_jwt_scopes`: scopes exigidos nas rotas protegidas. Padrão e contrato atual: `["oficina-app"]`
 - `oficina_app_node_port`: `NodePort` fixo usado como target do NLB interno. Padrão: `30080`, alinhado ao manifesto em `k8s/base/oficina-app`
 - `oficina_app_private_listener_port`: porta privada do listener do NLB interno usado pelo API Gateway. Padrão: `8080`
 - `expose_mailhog_smtp_private_nlb`: publica o SMTP do MailHog por NLB interno para a `notificacao-lambda`. Padrão: `true`
@@ -158,6 +164,25 @@ O gateway ainda não exige que a aplicação esteja pronta no momento do `apply`
 expose_oficina_app_api_gateway = false
 ```
 
+Quando `oficina_app_api_gateway_jwt_authorizer_enabled = true`, a rota padrão `ANY /` e `ANY /{proxy+}` passa a exigir JWT authorizer nativo do HTTP API com:
+
+- `issuer`: `oficina_app_api_gateway_jwt_issuer` ou, se nulo, o endpoint público do próprio HTTP API
+- `audience`: `["oficina-app"]`
+- `scope`: `["oficina-app"]` por padrão
+
+Nesse modo, a exposição do `oficina-app` fica em deny by default no gateway. Permanecem públicas apenas as exceções necessárias para a suíte atual:
+
+- `GET /q/swagger-ui`
+- `GET /q/swagger-ui/`
+- `GET /q/swagger-ui/{proxy+}`
+- `GET /q/health/live`
+- `GET /q/health/ready`
+- `GET /ordem-de-servico/{id}/acompanhar-link`
+- `GET|POST /ordem-de-servico/{id}/aprovar-link`
+- `GET|POST /ordem-de-servico/{id}/recusar-link`
+
+`/q/openapi` não fica público quando a flag está ativa.
+
 Para a aplicação principal, há dois padrões suportados:
 
 - rota HTTP pública, usando `HTTP_PROXY` com uma URL já publicada
@@ -206,10 +231,32 @@ Com a rota padrão do `oficina-app`, o teste público usa o output `oficina_app_
 
 ```bash
 API_URL="$(terraform -chdir=terraform/environments/lab output -raw oficina_app_public_base_url)"
+curl -i "${API_URL}/q/swagger-ui/"
 curl -i "${API_URL}/q/openapi"
-curl -i "${API_URL}/ordem-de-servico"
+curl -i "${API_URL}/q/health/live"
+curl -i "${API_URL}/q/health/ready"
+curl -i "${API_URL}/ordem-de-servico/2b2276e8-fa72-4f4c-a3b0-2c5b1bf427ef/acompanhar-link?actionToken=<magic-link>"
 curl -i -H "Authorization: Bearer <jwt-valido>" "${API_URL}/ordem-de-servico"
 ```
+
+## Observabilidade
+
+O repositório mantém duas camadas complementares de observabilidade:
+
+- a convenção vendor-neutral da suíte, preservada em [docs/telemetria.md](docs/telemetria.md)
+- a implantação AWS-native do `lab`, descrita em [docs/observabilidade-aws.md](docs/observabilidade-aws.md)
+
+- logs estruturados em JSON no app
+- OpenTelemetry habilitado para tracing e propagação de contexto
+- métricas de negócio e técnicas expostas pelo app
+- probes Kubernetes em `GET /q/health/live` e `GET /q/health/ready`
+- env vars OTEL e `OFICINA_OBSERVABILITY_*` padronizadas no `ConfigMap`
+- dashboard, alarmes, healthchecks e log groups na AWS para o ambiente `lab`
+
+Contratos e arquitetura:
+
+- [docs/telemetria.md](docs/telemetria.md)
+- [docs/observabilidade-aws.md](docs/observabilidade-aws.md)
 
 ## Deploy da aplicação
 
@@ -306,7 +353,7 @@ Valores opcionais no Environment:
 - `OFICINA_APP_API_GATEWAY_JWT_AUTHORIZER_ENABLED`: default `false`; quando `true`, protege as rotas padrão da aplicação com JWT
 - `OFICINA_APP_API_GATEWAY_JWT_ISSUER`: issuer do authorizer; quando ausente, usa o endpoint público do próprio HTTP API
 - `OFICINA_APP_API_GATEWAY_JWT_AUDIENCE`: lista JSON de audiences; default `["oficina-app"]`
-- `OFICINA_APP_API_GATEWAY_JWT_SCOPES`: lista JSON de scopes exigidos pelo authorizer; default `[]`
+- `OFICINA_APP_API_GATEWAY_JWT_SCOPES`: lista JSON de scopes exigidos pelo authorizer; default `["oficina-app"]`
 - `OFICINA_AUTH_ISSUER`: issuer repassado ao ConfigMap da aplicação; quando ausente no deploy integrado, é derivado do endpoint do API Gateway
 - `OFICINA_AUTH_JWKS_URI`: JWKS repassado ao ConfigMap da aplicação; quando ausente no deploy integrado, é derivado de `OFICINA_AUTH_ISSUER`
 - `OFICINA_AUTH_FORCE_LEGACY`: default `false`; quando `true`, preserva explicitamente o modo legado `oficina-api` + `file:/jwt/publicKey.pem`

@@ -102,8 +102,8 @@ jobs:
       TF_VAR_api_gateway_create_vpc_link_security_group: ${{ vars.API_GATEWAY_CREATE_VPC_LINK_SECURITY_GROUP || 'true' }}
       TF_VAR_oficina_app_api_gateway_jwt_authorizer_enabled: ${{ vars.OFICINA_APP_API_GATEWAY_JWT_AUTHORIZER_ENABLED || 'false' }}
       TF_VAR_oficina_app_api_gateway_jwt_issuer: ${{ vars.OFICINA_APP_API_GATEWAY_JWT_ISSUER }}
-      TF_VAR_oficina_app_api_gateway_jwt_audience: ${{ vars.OFICINA_APP_API_GATEWAY_JWT_AUDIENCE }}
-      TF_VAR_oficina_app_api_gateway_jwt_scopes: ${{ vars.OFICINA_APP_API_GATEWAY_JWT_SCOPES }}
+      TF_VAR_oficina_app_api_gateway_jwt_audience: ${{ vars.OFICINA_APP_API_GATEWAY_JWT_AUDIENCE || '["oficina-app"]' }}
+      TF_VAR_oficina_app_api_gateway_jwt_scopes: ${{ vars.OFICINA_APP_API_GATEWAY_JWT_SCOPES || '["oficina-app"]' }}
       TF_VAR_expose_mailhog_smtp_private_nlb: ${{ vars.EXPOSE_MAILHOG_SMTP_PRIVATE_NLB || 'true' }}
       TF_VAR_mailhog_smtp_node_port: ${{ vars.MAILHOG_SMTP_NODE_PORT || '31025' }}
       TF_VAR_mailhog_smtp_private_listener_port: ${{ vars.MAILHOG_SMTP_PRIVATE_LISTENER_PORT || '1025' }}
@@ -114,6 +114,28 @@ jobs:
       TF_VAR_create_terraform_shared_data_bucket: ${{ vars.CREATE_TERRAFORM_SHARED_DATA_BUCKET || 'true' }}
       TF_VAR_terraform_shared_data_bucket_name: ${{ vars.TERRAFORM_SHARED_DATA_BUCKET_NAME || vars.TF_STATE_BUCKET }}
       TF_VAR_terraform_shared_data_bucket_force_destroy: ${{ vars.TERRAFORM_SHARED_DATA_BUCKET_FORCE_DESTROY || 'false' }}
+      TF_VAR_observability_enabled: ${{ vars.OBSERVABILITY_ENABLED || 'true' }}
+      TF_VAR_observability_environment_name: ${{ vars.OBSERVABILITY_ENVIRONMENT_NAME || 'lab' }}
+      TF_VAR_observability_enable_dashboard: ${{ vars.OBSERVABILITY_ENABLE_DASHBOARD || 'true' }}
+      TF_VAR_observability_enable_route53_healthchecks: ${{ vars.OBSERVABILITY_ENABLE_ROUTE53_HEALTHCHECKS || 'true' }}
+      TF_VAR_observability_enable_k8s_resource_metrics: ${{ vars.OBSERVABILITY_ENABLE_K8S_RESOURCE_METRICS || 'true' }}
+      TF_VAR_observability_alert_email_endpoints: ${{ vars.OBSERVABILITY_ALERT_EMAIL_ENDPOINTS || '[]' }}
+      TF_VAR_observability_app_log_retention_in_days: ${{ vars.OBSERVABILITY_APP_LOG_RETENTION_IN_DAYS || '14' }}
+      TF_VAR_observability_prometheus_log_retention_in_days: ${{ vars.OBSERVABILITY_PROMETHEUS_LOG_RETENTION_IN_DAYS || '7' }}
+      TF_VAR_observability_metric_namespace: ${{ vars.OBSERVABILITY_METRIC_NAMESPACE || 'Oficina/Observability' }}
+      TF_VAR_observability_api_latency_warning_threshold_ms: ${{ vars.OBSERVABILITY_API_LATENCY_WARNING_THRESHOLD_MS || '1500' }}
+      TF_VAR_observability_api_latency_critical_threshold_ms: ${{ vars.OBSERVABILITY_API_LATENCY_CRITICAL_THRESHOLD_MS || '3000' }}
+      TF_VAR_observability_integration_failures_warning_threshold: ${{ vars.OBSERVABILITY_INTEGRATION_FAILURES_WARNING_THRESHOLD || '1' }}
+      TF_VAR_observability_integration_failures_critical_threshold: ${{ vars.OBSERVABILITY_INTEGRATION_FAILURES_CRITICAL_THRESHOLD || '3' }}
+      TF_VAR_observability_os_processing_failures_warning_threshold: ${{ vars.OBSERVABILITY_OS_PROCESSING_FAILURES_WARNING_THRESHOLD || '1' }}
+      TF_VAR_observability_os_processing_failures_critical_threshold: ${{ vars.OBSERVABILITY_OS_PROCESSING_FAILURES_CRITICAL_THRESHOLD || '3' }}
+      TF_VAR_observability_alarm_period_seconds: ${{ vars.OBSERVABILITY_ALARM_PERIOD_SECONDS || '300' }}
+      OBSERVABILITY_ENABLED: ${{ vars.OBSERVABILITY_ENABLED || 'true' }}
+      OBSERVABILITY_APP_LOG_GROUP_NAME: ${{ vars.OBSERVABILITY_APP_LOG_GROUP_NAME || '/oficina/lab/eks/oficina-app' }}
+      OBSERVABILITY_PROMETHEUS_LOG_GROUP_NAME: ${{ vars.OBSERVABILITY_PROMETHEUS_LOG_GROUP_NAME || format('/aws/containerinsights/{0}/prometheus', vars.EKS_CLUSTER_NAME || 'eks-lab') }}
+      OBSERVABILITY_ENABLE_K8S_RESOURCE_METRICS: ${{ vars.OBSERVABILITY_ENABLE_K8S_RESOURCE_METRICS || 'true' }}
+      OBSERVABILITY_FLUENT_BIT_IMAGE: ${{ vars.OBSERVABILITY_FLUENT_BIT_IMAGE || 'public.ecr.aws/aws-observability/aws-for-fluent-bit:2.34.3.20260423' }}
+      OBSERVABILITY_CWAGENT_IMAGE: ${{ vars.OBSERVABILITY_CWAGENT_IMAGE || 'public.ecr.aws/cloudwatch-agent/cloudwatch-agent:1.300066.1' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -170,6 +192,7 @@ jobs:
           BASE_BRANCH: main
         run: |
           git fetch origin "${BASE_BRANCH}" "${HEAD_BRANCH}"
+          head_ref="${GITHUB_REPOSITORY_OWNER}:${HEAD_BRANCH}"
 
           if git diff --quiet "origin/${BASE_BRANCH}...origin/${HEAD_BRANCH}" -- .; then
             echo "Branch ${HEAD_BRANCH} nao possui diferencas de conteudo em relacao a ${BASE_BRANCH}; PR nao sera criado."
@@ -178,8 +201,9 @@ jobs:
 
           existing_pr_url="$(
             gh pr list \
+              --repo "${GITHUB_REPOSITORY}" \
               --base "${BASE_BRANCH}" \
-              --head "${HEAD_BRANCH}" \
+              --head "${head_ref}" \
               --state open \
               --json url \
               --jq '.[0].url // empty'
@@ -190,8 +214,38 @@ jobs:
             exit 0
           fi
 
-          gh pr create \
-            --base "${BASE_BRANCH}" \
-            --head "${HEAD_BRANCH}" \
-            --title "chore: promover develop para main" \
-            --body "PR aberto automaticamente apos as validacoes do workflow Deploy Lab passarem."
+          set +e
+          create_output="$(
+            gh pr create \
+              --repo "${GITHUB_REPOSITORY}" \
+              --base "${BASE_BRANCH}" \
+              --head "${head_ref}" \
+              --title "chore: promover develop para main" \
+              --body "PR aberto automaticamente apos as validacoes do workflow Deploy Lab passarem." \
+              2>&1
+          )"
+          create_status=$?
+          set -e
+
+          if [[ ${create_status} -eq 0 ]]; then
+            echo "${create_output}"
+            exit 0
+          fi
+
+          existing_pr_url="$(
+            gh pr list \
+              --repo "${GITHUB_REPOSITORY}" \
+              --base "${BASE_BRANCH}" \
+              --head "${head_ref}" \
+              --state open \
+              --json url \
+              --jq '.[0].url // empty'
+          )"
+
+          if [[ -n "${existing_pr_url}" ]]; then
+            echo "Pull request ja existente: ${existing_pr_url}"
+            exit 0
+          fi
+
+          echo "${create_output}" >&2
+          exit "${create_status}"

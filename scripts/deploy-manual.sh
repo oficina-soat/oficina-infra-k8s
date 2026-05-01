@@ -18,6 +18,12 @@ OFICINA_AUTH_JWKS_URI="${OFICINA_AUTH_JWKS_URI:-file:/jwt/publicKey.pem}"
 OFICINA_AUTH_FORCE_LEGACY="${OFICINA_AUTH_FORCE_LEGACY:-false}"
 API_GATEWAY_ID="${API_GATEWAY_ID:-}"
 API_GATEWAY_NAME="${API_GATEWAY_NAME:-${EKS_CLUSTER_NAME:+${EKS_CLUSTER_NAME}-http-api}}"
+OBSERVABILITY_ENABLED="${OBSERVABILITY_ENABLED:-true}"
+OBSERVABILITY_APP_LOG_GROUP_NAME="${OBSERVABILITY_APP_LOG_GROUP_NAME:-/oficina/lab/eks/oficina-app}"
+OBSERVABILITY_PROMETHEUS_LOG_GROUP_NAME="${OBSERVABILITY_PROMETHEUS_LOG_GROUP_NAME:-${EKS_CLUSTER_NAME:+/aws/containerinsights/${EKS_CLUSTER_NAME}/prometheus}}"
+OBSERVABILITY_ENABLE_K8S_RESOURCE_METRICS="${OBSERVABILITY_ENABLE_K8S_RESOURCE_METRICS:-true}"
+OBSERVABILITY_FLUENT_BIT_IMAGE="${OBSERVABILITY_FLUENT_BIT_IMAGE:-public.ecr.aws/aws-observability/aws-for-fluent-bit:2.34.3.20260423}"
+OBSERVABILITY_CWAGENT_IMAGE="${OBSERVABILITY_CWAGENT_IMAGE:-public.ecr.aws/cloudwatch-agent/cloudwatch-agent:1.300066.1}"
 DB_SECRET_NAME="oficina-database-env"
 APP_NAMESPACE="default"
 APP_ENV_DIR="k8s/overlays/lab"
@@ -41,6 +47,12 @@ Variaveis suportadas:
   OFICINA_AUTH_FORCE_LEGACY true|false. Default: false
   API_GATEWAY_ID         Opcional; ID do HTTP API usado para descobrir o issuer publico
   API_GATEWAY_NAME       Opcional; default <EKS_CLUSTER_NAME>-http-api
+  OBSERVABILITY_ENABLED                    true|false. Default: true
+  OBSERVABILITY_APP_LOG_GROUP_NAME         Default: /oficina/lab/eks/oficina-app
+  OBSERVABILITY_PROMETHEUS_LOG_GROUP_NAME  Default: /aws/containerinsights/<EKS_CLUSTER_NAME>/prometheus
+  OBSERVABILITY_ENABLE_K8S_RESOURCE_METRICS true|false. Default: true
+  OBSERVABILITY_FLUENT_BIT_IMAGE           Imagem fixa do AWS for Fluent Bit
+  OBSERVABILITY_CWAGENT_IMAGE              Imagem fixa do CloudWatch agent
 EOF
 }
 
@@ -58,6 +70,17 @@ require_non_empty() {
     echo "Variavel obrigatoria ausente: ${name}" >&2
     exit 1
   fi
+}
+
+is_truthy() {
+  case "${1:-}" in
+    true | TRUE | True | 1 | yes | YES | Yes)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
 }
 
 log() {
@@ -182,13 +205,41 @@ render_overlay() {
   local escaped_image_ref
   local escaped_auth_issuer
   local escaped_auth_jwks_uri
+  local escaped_observability_app_log_group_name
+  local escaped_observability_prometheus_log_group_name
+  local escaped_observability_fluent_bit_image
+  local escaped_observability_cwagent_image
+  local observability_cwagent_replicas
+  local observability_node_os_selector
   escaped_image_ref="$(escape_sed_replacement "${IMAGE_REF}")"
   escaped_auth_issuer="$(escape_sed_replacement "${OFICINA_AUTH_ISSUER}")"
   escaped_auth_jwks_uri="$(escape_sed_replacement "${OFICINA_AUTH_JWKS_URI}")"
+  escaped_observability_app_log_group_name="$(escape_sed_replacement "${OBSERVABILITY_APP_LOG_GROUP_NAME}")"
+  escaped_observability_prometheus_log_group_name="$(escape_sed_replacement "${OBSERVABILITY_PROMETHEUS_LOG_GROUP_NAME}")"
+  escaped_observability_fluent_bit_image="$(escape_sed_replacement "${OBSERVABILITY_FLUENT_BIT_IMAGE}")"
+  escaped_observability_cwagent_image="$(escape_sed_replacement "${OBSERVABILITY_CWAGENT_IMAGE}")"
+  if is_truthy "${OBSERVABILITY_ENABLED}"; then
+    observability_node_os_selector="linux"
+  else
+    observability_node_os_selector="disabled"
+  fi
+  if is_truthy "${OBSERVABILITY_ENABLED}" && is_truthy "${OBSERVABILITY_ENABLE_K8S_RESOURCE_METRICS}"; then
+    observability_cwagent_replicas="1"
+  else
+    observability_cwagent_replicas="0"
+  fi
   kubectl kustomize "${APP_ENV_DIR}" |
     sed "s|IMAGE_PLACEHOLDER|${escaped_image_ref}|g" |
     sed "s|OFICINA_AUTH_ISSUER_PLACEHOLDER|${escaped_auth_issuer}|g" |
-    sed "s|OFICINA_AUTH_JWKS_URI_PLACEHOLDER|${escaped_auth_jwks_uri}|g"
+    sed "s|OFICINA_AUTH_JWKS_URI_PLACEHOLDER|${escaped_auth_jwks_uri}|g" |
+    sed "s|OBSERVABILITY_CLUSTER_NAME_PLACEHOLDER|${EKS_CLUSTER_NAME}|g" |
+    sed "s|OBSERVABILITY_AWS_REGION_PLACEHOLDER|${AWS_REGION}|g" |
+    sed "s|OBSERVABILITY_APP_LOG_GROUP_PLACEHOLDER|${escaped_observability_app_log_group_name}|g" |
+    sed "s|OBSERVABILITY_PROMETHEUS_LOG_GROUP_PLACEHOLDER|${escaped_observability_prometheus_log_group_name}|g" |
+    sed "s|OBSERVABILITY_CWAGENT_REPLICAS_PLACEHOLDER|${observability_cwagent_replicas}|g" |
+    sed "s|OBSERVABILITY_NODE_OS_SELECTOR_PLACEHOLDER|${observability_node_os_selector}|g" |
+    sed "s|OBSERVABILITY_FLUENT_BIT_IMAGE_PLACEHOLDER|${escaped_observability_fluent_bit_image}|g" |
+    sed "s|OBSERVABILITY_CWAGENT_IMAGE_PLACEHOLDER|${escaped_observability_cwagent_image}|g"
 }
 
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
@@ -207,6 +258,7 @@ if [[ "${UPDATE_KUBECONFIG}" == "true" ]]; then
 fi
 
 if [[ "${DEPLOY_APP}" == "true" ]]; then
+  require_non_empty "${EKS_CLUSTER_NAME}" "EKS_CLUSTER_NAME"
   require_non_empty "${IMAGE_REF}" "IMAGE_REF"
 fi
 
@@ -227,6 +279,12 @@ JWT_DIR=${JWT_DIR}
 OFICINA_AUTH_ISSUER=${OFICINA_AUTH_ISSUER}
 OFICINA_AUTH_JWKS_URI=${OFICINA_AUTH_JWKS_URI}
 OFICINA_AUTH_FORCE_LEGACY=${OFICINA_AUTH_FORCE_LEGACY}
+OBSERVABILITY_ENABLED=${OBSERVABILITY_ENABLED}
+OBSERVABILITY_APP_LOG_GROUP_NAME=${OBSERVABILITY_APP_LOG_GROUP_NAME}
+OBSERVABILITY_PROMETHEUS_LOG_GROUP_NAME=${OBSERVABILITY_PROMETHEUS_LOG_GROUP_NAME}
+OBSERVABILITY_ENABLE_K8S_RESOURCE_METRICS=${OBSERVABILITY_ENABLE_K8S_RESOURCE_METRICS}
+OBSERVABILITY_FLUENT_BIT_IMAGE=${OBSERVABILITY_FLUENT_BIT_IMAGE}
+OBSERVABILITY_CWAGENT_IMAGE=${OBSERVABILITY_CWAGENT_IMAGE}
 DB_SECRET_NAME=${DB_SECRET_NAME}
 EOF
 

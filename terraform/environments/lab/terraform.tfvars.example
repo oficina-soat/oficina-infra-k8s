@@ -36,10 +36,33 @@ create_ecr_repository = true
 # Kubernetes oficina-app. Para desativar essa rota padrao:
 # expose_oficina_app_api_gateway = false
 #
+# Para exigir JWT nativo do HTTP API nas rotas da aplicacao:
+# oficina_app_api_gateway_jwt_authorizer_enabled = true
+# oficina_app_api_gateway_jwt_issuer            = null # usa o endpoint publico do proprio HTTP API
+# oficina_app_api_gateway_jwt_audience          = ["oficina-app"]
+# oficina_app_api_gateway_jwt_scopes            = ["oficina-app"]
+#
+# Quando a flag estiver ativa, o gateway protege tudo por default e deixa
+# publicos apenas:
+# - /q/swagger-ui/
+# - /q/swagger-ui/*
+# - /q/health/live
+# - /q/health/ready
+# - /ordem-de-servico/{id}/acompanhar-link
+# - /ordem-de-servico/{id}/aprovar-link
+# - /ordem-de-servico/{id}/recusar-link
+#
 # O SMTP do MailHog tambem e exposto por default em um NLB interno, usando
 # o NodePort 31025 do Service mailhog-smtp-private e um SG dedicado para a
 # notificacao-lambda. Para desativar esse acesso privado:
 # expose_mailhog_smtp_private_nlb = false
+#
+# Observabilidade AWS-native do lab:
+# observability_enabled                      = true
+# observability_enable_dashboard             = true
+# observability_enable_route53_healthchecks  = true
+# observability_enable_k8s_resource_metrics  = true
+# observability_alert_email_endpoints        = ["ops@example.com"]
 #
 # Exemplo para publicar a aplicacao principal por URL publica:
 # api_gateway_http_routes = {
