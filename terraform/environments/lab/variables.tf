@@ -248,7 +248,10 @@ variable "oficina_app_api_gateway_jwt_audience" {
   default     = ["oficina-app"]
 
   validation {
-    condition     = length(var.oficina_app_api_gateway_jwt_audience) == 0 || var.oficina_app_api_gateway_jwt_audience == ["oficina-app"]
+    condition = length(var.oficina_app_api_gateway_jwt_audience) == 0 || (
+      length(var.oficina_app_api_gateway_jwt_audience) == 1 &&
+      trimspace(var.oficina_app_api_gateway_jwt_audience[0]) == "oficina-app"
+    )
     error_message = "oficina_app_api_gateway_jwt_audience deve permanecer alinhado ao contrato da suite: [\"oficina-app\"]."
   }
 }
@@ -259,7 +262,7 @@ variable "oficina_app_api_gateway_jwt_scopes" {
   default     = ["oficina-app"]
 
   validation {
-    condition     = alltrue([for scope in var.oficina_app_api_gateway_jwt_scopes : trim(scope) != ""])
+    condition     = alltrue([for scope in var.oficina_app_api_gateway_jwt_scopes : trimspace(scope) != ""])
     error_message = "oficina_app_api_gateway_jwt_scopes nao pode conter scopes vazios."
   }
 }
