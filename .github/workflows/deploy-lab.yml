@@ -96,7 +96,7 @@ jobs:
       TF_VAR_public_subnet_cidrs: ${{ vars.EKS_PUBLIC_SUBNET_CIDRS }}
       TF_VAR_cluster_endpoint_public_access_cidrs: ${{ vars.EKS_CLUSTER_ENDPOINT_PUBLIC_ACCESS_CIDRS }}
       TF_VAR_ecr_repository_name: ${{ vars.ECR_REPOSITORY_NAME || 'oficina' }}
-      TF_VAR_create_ecr_repository: ${{ vars.CREATE_ECR_REPOSITORY || 'false' }}
+      TF_VAR_create_ecr_repository: ${{ vars.CREATE_ECR_REPOSITORY || 'true' }}
       TF_VAR_create_api_gateway: ${{ vars.CREATE_API_GATEWAY || 'true' }}
       TF_VAR_api_gateway_name: ${{ vars.API_GATEWAY_NAME }}
       TF_VAR_api_gateway_stage_name: ${{ vars.API_GATEWAY_STAGE_NAME || '$default' }}

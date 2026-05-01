@@ -118,7 +118,7 @@ Variaveis opcionais:
 - `EKS_PUBLIC_SUBNET_CIDRS`: lista JSON, por exemplo `["10.0.0.0/20","10.0.16.0/20"]`
 - `EKS_CLUSTER_ENDPOINT_PUBLIC_ACCESS_CIDRS`: lista JSON de CIDRs
 - `ECR_REPOSITORY_NAME`
-- `CREATE_ECR_REPOSITORY`
+- `CREATE_ECR_REPOSITORY`: default `true`; use `false` apenas quando o laboratório precisar reaproveitar um ECR externo
 - `CREATE_API_GATEWAY`
 - `API_GATEWAY_NAME`
 - `API_GATEWAY_STAGE_NAME`
