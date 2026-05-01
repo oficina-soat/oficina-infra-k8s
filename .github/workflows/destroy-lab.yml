@@ -22,6 +22,11 @@ on:
         required: true
         default: false
         type: boolean
+      delete_shared_state_bucket:
+        description: "Tambem remove o bucket S3 compartilhado de state ao final do destroy, incluindo todos os versions e states remotos da suite"
+        required: true
+        default: false
+        type: boolean
 
 concurrency:
   group: lab-infra
@@ -66,6 +71,7 @@ jobs:
       NOTIFICACAO_LAMBDA_ARTIFACT_PREFIX: ${{ vars.NOTIFICACAO_LAMBDA_ARTIFACT_PREFIX || 'oficina/lab/lambda/oficina-notificacao-lambda' }}
       DELETE_RUNTIME_SECRETS: ${{ inputs.delete_runtime_secrets }}
       DELETE_LAMBDA_ARTIFACT_OBJECTS: ${{ inputs.delete_lambda_artifact_objects }}
+      DELETE_SHARED_STATE_BUCKET: ${{ inputs.delete_shared_state_bucket }}
       SKIP_FINAL_DB_SNAPSHOT: ${{ inputs.skip_final_db_snapshot }}
       DB_FINAL_SNAPSHOT_IDENTIFIER: ${{ vars.DB_FINAL_SNAPSHOT_IDENTIFIER || format('{0}-final', vars.DB_IDENTIFIER || 'oficina-postgres-lab') }}
       TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}

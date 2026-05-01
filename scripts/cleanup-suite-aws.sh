@@ -616,6 +616,7 @@ cleanup_runtime_secrets() {
   delete_secret_if_exists "${JWT_SECRET_NAME}/privateKeyPem"
   delete_secret_if_exists "${JWT_SECRET_NAME}/publicKeyPem"
   delete_secret_if_exists "${DB_APP_SECRET_NAME}"
+  delete_secret_if_exists "${AUTH_DB_SECRET_NAME}"
 
   for auth_db_field in engine host port dbname username password; do
     delete_secret_if_exists "${AUTH_DB_SECRET_NAME}/${auth_db_field}"

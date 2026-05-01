@@ -53,7 +53,7 @@ O cleanup previo remove recursos que este repositorio nao gerencia diretamente n
 - repositorio ECR da suite, mesmo com imagens
 - RDS `oficina-postgres-lab`
 - parameter group, subnet group, security group, role de monitoring, log groups e alarmes do banco
-- secrets runtime da suite no Secrets Manager, quando `delete_runtime_secrets=true`
+- secrets runtime da suite no Secrets Manager, incluindo `oficina/lab/database/auth-lambda` e seus sub-secrets, quando `delete_runtime_secrets=true`
 - objetos de artefato das Lambdas no bucket configurado, quando `delete_lambda_artifact_objects=true`
 
 Depois desse cleanup, o workflow executa o destroy Terraform deste repositorio com:
@@ -75,7 +75,9 @@ Com isso, o teardown remove, quando os recursos estiverem no state deste ambient
 
 O input `skip_final_db_snapshot` controla se o RDS sera removido sem snapshot final. O default e `true`, alinhado ao objetivo de zerar custo quando o laboratorio nao estiver em uso.
 
-Se o laboratorio estiver reutilizando um bucket de backend remoto ou um repositorio ECR externos ao state, o workflow os preserva por design.
+O input `delete_shared_state_bucket` controla a remocao do bucket S3 compartilhado de state ao final do destroy. Quando `true`, ele remove o bucket inteiro, incluindo versionamento e qualquer state remoto ainda armazenado nele.
+
+Se o laboratorio estiver reutilizando um bucket de backend remoto ou um repositorio ECR externos ao state, o workflow os preserva por design, salvo quando `delete_shared_state_bucket=true`.
 
 ## Autenticacao AWS
 

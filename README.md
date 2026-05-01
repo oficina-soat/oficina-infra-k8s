@@ -417,7 +417,7 @@ O `Destroy Lab` remove, quando existirem:
 - `auth-lambda` e `notificacao-lambda`, seus log groups, o log group legado `/aws/lambda/OficinaAuthLambdaNative` e o security group dedicado do `auth-lambda`
 - repositório ECR da suíte, mesmo com imagens
 - RDS PostgreSQL do laboratório, log groups, alarmes, parameter group, subnet group, security group e role de enhanced monitoring
-- secrets runtime compartilhados da suíte no Secrets Manager, como `oficina/lab/jwt`, `oficina/lab/database/app` e os sub-secrets de `oficina/lab/database/auth-lambda`, quando `delete_runtime_secrets=true`
+- secrets runtime compartilhados da suíte no Secrets Manager, como `oficina/lab/jwt`, `oficina/lab/database/app`, `oficina/lab/database/auth-lambda` e seus sub-secrets, quando `delete_runtime_secrets=true`
 - objetos de artefato das Lambdas no bucket S3 configurado, quando `delete_lambda_artifact_objects=true`
 
 Depois disso, o workflow destrói, quando gerenciados por este repositório/state:
@@ -432,7 +432,9 @@ Depois disso, o workflow destrói, quando gerenciados por este repositório/stat
 
 Para zerar custo de armazenamento do banco, o input `skip_final_db_snapshot` fica disponível no workflow. Com o default `true`, o RDS é removido sem snapshot final.
 
-O workflow preserva recursos externos que o laboratório apenas reutiliza, como bucket de backend remoto fora do state e repositório ECR externo.
+O input `delete_shared_state_bucket` controla a remoção do bucket S3 compartilhado de state ao final do destroy. Com o default `false`, o workflow preserva esse bucket quando ele é backend externo ou compartilhado por outros states da suíte. Quando `true`, ele apaga o bucket inteiro, incluindo versionamento e todos os states remotos armazenados nele.
+
+O workflow preserva recursos externos que o laboratório apenas reutiliza, como bucket de backend remoto fora do state e repositório ECR externo, salvo quando `delete_shared_state_bucket=true`.
 
 ## Validações recomendadas
 
