@@ -249,7 +249,7 @@ module "api_gateway" {
 }
 
 resource "aws_iam_role_policy_attachment" "eks_node_cloudwatch_agent" {
-  count = var.observability_enabled ? 1 : 0
+  count = var.observability_enabled && var.observability_manage_node_role_policy_attachment ? 1 : 0
 
   role       = element(reverse(split("/", var.eks_node_role_arn)), 0)
   policy_arn = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"

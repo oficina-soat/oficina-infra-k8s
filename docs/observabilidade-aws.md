@@ -55,6 +55,9 @@ Para deixar a observabilidade AWS-native ligada:
 - `OBSERVABILITY_ENABLED=true`
 - `OBSERVABILITY_ENABLE_ROUTE53_HEALTHCHECKS=true`
 - `OBSERVABILITY_ENABLE_K8S_RESOURCE_METRICS=true`
+- `OBSERVABILITY_MANAGE_NODE_ROLE_POLICY_ATTACHMENT=true` somente se o runner do deploy tiver permissao `iam:AttachRolePolicy`
+
+Por padrao, `OBSERVABILITY_MANAGE_NODE_ROLE_POLICY_ATTACHMENT=false` para nao bloquear o deploy em contas onde o laboratorio nao pode alterar IAM. Nesse caso, a role dos nodes do EKS precisa ja ter permissao equivalente a `CloudWatchAgentServerPolicy` para que `aws-for-fluent-bit` e `cloudwatch-agent` consigam publicar logs e metricas.
 
 Para reduzir custo recorrente sem mexer no resto da stack:
 

@@ -124,6 +124,7 @@ jobs:
       TF_VAR_observability_enable_dashboard: ${{ vars.OBSERVABILITY_ENABLE_DASHBOARD || 'true' }}
       TF_VAR_observability_enable_route53_healthchecks: ${{ vars.OBSERVABILITY_ENABLE_ROUTE53_HEALTHCHECKS || 'true' }}
       TF_VAR_observability_enable_k8s_resource_metrics: ${{ vars.OBSERVABILITY_ENABLE_K8S_RESOURCE_METRICS || 'true' }}
+      TF_VAR_observability_manage_node_role_policy_attachment: ${{ vars.OBSERVABILITY_MANAGE_NODE_ROLE_POLICY_ATTACHMENT || 'false' }}
       TF_VAR_observability_alert_email_endpoints: ${{ vars.OBSERVABILITY_ALERT_EMAIL_ENDPOINTS || '[]' }}
       TF_VAR_observability_app_log_retention_in_days: ${{ vars.OBSERVABILITY_APP_LOG_RETENTION_IN_DAYS || '14' }}
       TF_VAR_observability_prometheus_log_retention_in_days: ${{ vars.OBSERVABILITY_PROMETHEUS_LOG_RETENTION_IN_DAYS || '7' }}
