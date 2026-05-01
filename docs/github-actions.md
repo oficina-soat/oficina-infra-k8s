@@ -1,9 +1,10 @@
 # GitHub Actions
 
-O projeto mantem apenas dois workflows para o ambiente `lab`:
+O projeto mantem tres workflows para o ambiente `lab`:
 
 - `./.github/workflows/deploy-lab.yml`
 - `./.github/workflows/eks-deactivate-lab.yml`
+- `./.github/workflows/destroy-lab.yml`
 
 ## Deploy Lab
 
@@ -38,6 +39,29 @@ O workflow `Deactivate EKS Lab` desativa somente o EKS. Ele exige confirmacao ma
 Isso remove o cluster EKS, o managed node group e os access entries, preservando VPC, subnets, ECR, API Gateway e bucket de state.
 
 Esse workflow exige state remoto existente. Rode `Deploy Lab` pelo menos uma vez antes de usa-lo.
+
+## Destroy Lab
+
+O workflow `Destroy Lab` desmonta o laboratorio inteiro. Ele exige confirmacao manual com o valor `DESTROY` e executa `bash ./scripts/ci-terraform.sh` com:
+
+- `TERRAFORM_ACTION=destroy`
+- `TF_VAR_ecr_force_delete=true`
+- `TF_VAR_terraform_shared_data_bucket_force_destroy=true`
+
+Com isso, o teardown remove, quando os recursos estiverem no state deste ambiente:
+
+- VPC, subnets publicas, internet gateway, route table e associacoes
+- cluster EKS, managed node group, access entry e access policy association
+- NLBs internos do `oficina-app` e do SMTP do MailHog, listeners, target groups e attachments
+- security groups dedicados da VPC, do VPC Link e da `notificacao-lambda`
+- API Gateway HTTP API, stage, rotas, integracoes, JWT authorizers, VPC Link e access log group
+- stack AWS-native de observabilidade: log groups, metric filters, alarmes, dashboard, topicos SNS, subscriptions e health checks do Route 53
+- repositorio ECR criado por este ambiente, mesmo com imagens
+- bucket S3 compartilhado do Terraform quando ele pertence a este state, mesmo com objetos e versionamento
+
+Se o laboratorio estiver reutilizando um bucket de backend remoto ou um repositorio ECR externos ao state, o workflow os preserva por design.
+
+O workflow tambem expoe a opcao `delete_shared_jwt_secret`. Quando marcada, ele remove o secret compartilhado `oficina/lab/jwt` do Secrets Manager com `force-delete-without-recovery`. O secret de banco nao e tocado, porque ele pertence a outros fluxos/repositorios.
 
 ## Autenticacao AWS
 

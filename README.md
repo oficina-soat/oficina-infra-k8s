@@ -292,10 +292,11 @@ Para acesso local:
 
 ## Deploy com GitHub Actions
 
-O repositório mantém dois workflows para o ambiente de laboratório:
+O repositório mantém três workflows para o ambiente de laboratório:
 
 - [`.github/workflows/deploy-lab.yml`](.github/workflows/deploy-lab.yml): valida o repositório, aplica a infraestrutura Terraform e publica a aplicação no EKS
 - [`.github/workflows/eks-deactivate-lab.yml`](.github/workflows/eks-deactivate-lab.yml): remove somente o módulo EKS para reduzir custo quando o laboratório estiver parado
+- [`.github/workflows/destroy-lab.yml`](.github/workflows/destroy-lab.yml): remove a infraestrutura completa criada pelo repositório para zerar o custo recorrente do laboratório quando ele não estiver em uso
 
 O workflow `Deploy Lab` executa em pushes para `develop` e `main`. O job `validate` roda nas duas branches, mas o job de deploy só roda quando a ref é `main`. A execução manual por `workflow_dispatch` também deve ser feita a partir de `main`.
 
@@ -408,6 +409,20 @@ Use o workflow `Deploy Lab` quando quiser convergir a infraestrutura declarada n
 Use o workflow `Deactivate EKS Lab` quando quiser remover somente o EKS durante períodos de inatividade. Ele exige o valor `DEACTIVATE` no campo de confirmação e executa um `terraform destroy` direcionado ao alvo `module.eks`, preservando VPC, ECR, API Gateway e bucket de state.
 
 O workflow `Deactivate EKS Lab` exige state remoto existente. Rode `Deploy Lab` pelo menos uma vez antes de usá-lo.
+
+Use o workflow `Destroy Lab` quando quiser desmontar o laboratório inteiro. Ele exige o valor `DESTROY` no campo de confirmação e executa um `terraform destroy` completo com limpeza forçada do bucket S3 gerenciado por este ambiente e do repositório ECR gerenciado por este state, inclusive quando houver objetos ou imagens.
+
+O `Destroy Lab` remove, quando gerenciados por este repositório/state:
+
+- VPC, subnets públicas, internet gateway, route table e associações
+- cluster EKS, managed node group, access entry e access policy association
+- security groups dedicados, NLBs internos, listeners, target groups e attachments
+- API Gateway HTTP API, stage, integrações, rotas, JWT authorizers, VPC Link e access log group
+- stack de observabilidade AWS-native: log groups, metric filters, alarmes, dashboard, tópicos SNS, subscriptions e health checks do Route 53
+- repositório ECR criado por este ambiente, mesmo com imagens
+- bucket S3 compartilhado do Terraform quando ele faz parte do state deste ambiente, mesmo com objetos/versionamento
+
+O workflow preserva recursos externos que o laboratório apenas reutiliza, como bucket de backend remoto fora do state, repositório ECR externo e secrets de banco criados em outros repositórios. Opcionalmente ele também pode remover o secret compartilhado `oficina/lab/jwt` do Secrets Manager.
 
 ## Validações recomendadas
 

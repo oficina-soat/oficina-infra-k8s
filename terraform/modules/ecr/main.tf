@@ -1,6 +1,7 @@
 resource "aws_ecr_repository" "app" {
   count                = var.create_repository ? 1 : 0
   name                 = var.repository_name
+  force_delete         = var.force_delete
   image_tag_mutability = "MUTABLE"
 
   image_scanning_configuration {
