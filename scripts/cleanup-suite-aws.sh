@@ -2,6 +2,10 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+source "${SCRIPT_DIR}/lib/common.sh"
+
 AWS_REGION="${AWS_REGION:-}"
 TF_STATE_BUCKET="${TF_STATE_BUCKET:-}"
 EKS_CLUSTER_NAME="${EKS_CLUSTER_NAME:-eks-lab}"
@@ -34,38 +38,6 @@ NETWORK_INTERFACE_WAIT_SECONDS="${NETWORK_INTERFACE_WAIT_SECONDS:-900}"
 FINAL_NETWORK_INTERFACE_WAIT_SECONDS="${FINAL_NETWORK_INTERFACE_WAIT_SECONDS:-1800}"
 NETWORK_INTERFACE_POLL_SECONDS="${NETWORK_INTERFACE_POLL_SECONDS:-15}"
 DEFERRED_SECURITY_GROUP_IDS=()
-
-log() {
-  printf '\n[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
-}
-
-require_cmd() {
-  if ! command -v "$1" >/dev/null 2>&1; then
-    echo "Comando obrigatorio nao encontrado: $1" >&2
-    exit 1
-  fi
-}
-
-require_non_empty() {
-  local value="$1"
-  local name="$2"
-
-  if [[ -z "${value}" ]]; then
-    echo "Variavel obrigatoria ausente: ${name}" >&2
-    exit 1
-  fi
-}
-
-is_truthy() {
-  case "${1:-}" in
-    true | TRUE | True | 1 | yes | YES | Yes)
-      return 0
-      ;;
-    *)
-      return 1
-      ;;
-  esac
-}
 
 trim_none() {
   if [[ "${1:-}" == "None" ]]; then

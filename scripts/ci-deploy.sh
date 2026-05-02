@@ -5,6 +5,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
+source "${SCRIPT_DIR}/lib/common.sh"
+
 TERRAFORM_DIR="${TERRAFORM_DIR:-${REPO_ROOT}/terraform/environments/lab}"
 AWS_REGION="${AWS_REGION:-}"
 EKS_CLUSTER_NAME="${EKS_CLUSTER_NAME:-}"
@@ -48,35 +50,6 @@ cleanup() {
 
 trap cleanup EXIT
 
-log() {
-  printf '\n[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
-}
-
-require_cmd() {
-  if ! command -v "$1" >/dev/null 2>&1; then
-    echo "Comando obrigatorio nao encontrado: $1" >&2
-    exit 1
-  fi
-}
-
-require_non_empty() {
-  local value="$1"
-  local name="$2"
-
-  if [[ -z "${value}" ]]; then
-    echo "Variavel obrigatoria ausente: ${name}" >&2
-    exit 1
-  fi
-}
-
-unset_if_empty() {
-  local name="$1"
-
-  if [[ -v "${name}" && -z "${!name}" ]]; then
-    unset "${name}"
-  fi
-}
-
 normalize_optional_envs() {
   unset_if_empty "DEPLOY_APP"
   unset_if_empty "IMAGE_REF"
@@ -91,17 +64,6 @@ normalize_optional_envs() {
   unset_if_empty "OFICINA_AUTH_ISSUER"
   unset_if_empty "OFICINA_AUTH_JWKS_URI"
   unset_if_empty "OFICINA_AUTH_FORCE_LEGACY"
-}
-
-is_truthy() {
-  case "${1:-}" in
-    true | TRUE | True | 1 | yes | YES | Yes)
-      return 0
-      ;;
-    *)
-      return 1
-      ;;
-  esac
 }
 
 generate_jwt_keypair() {

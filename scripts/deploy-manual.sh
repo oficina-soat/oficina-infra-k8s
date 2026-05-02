@@ -5,6 +5,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
+source "${SCRIPT_DIR}/lib/common.sh"
+
 AWS_REGION="${AWS_REGION:-us-east-1}"
 EKS_CLUSTER_NAME="${EKS_CLUSTER_NAME:-}"
 UPDATE_KUBECONFIG="${UPDATE_KUBECONFIG:-false}"
@@ -55,37 +57,6 @@ Variaveis suportadas:
   OBSERVABILITY_FLUENT_BIT_IMAGE           Imagem fixa do AWS for Fluent Bit
   OBSERVABILITY_CWAGENT_IMAGE              Imagem fixa do CloudWatch agent
 EOF
-}
-
-require_cmd() {
-  if ! command -v "$1" >/dev/null 2>&1; then
-    echo "Comando obrigatorio nao encontrado: $1" >&2
-    exit 1
-  fi
-}
-
-require_non_empty() {
-  local value="$1"
-  local name="$2"
-  if [[ -z "${value}" ]]; then
-    echo "Variavel obrigatoria ausente: ${name}" >&2
-    exit 1
-  fi
-}
-
-is_truthy() {
-  case "${1:-}" in
-    true | TRUE | True | 1 | yes | YES | Yes)
-      return 0
-      ;;
-    *)
-      return 1
-      ;;
-  esac
-}
-
-log() {
-  printf '\n[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
 }
 
 normalize_url_like_value() {

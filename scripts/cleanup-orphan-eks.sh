@@ -2,6 +2,10 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+source "${SCRIPT_DIR}/lib/common.sh"
+
 AWS_REGION="${AWS_REGION:-}"
 EKS_CLUSTER_NAME="${EKS_CLUSTER_NAME:-}"
 NODE_GROUP_NAME="${NODE_GROUP_NAME:-${EKS_CLUSTER_NAME}-ng}"
@@ -13,27 +17,6 @@ VPC_CLEANUP_WAIT_SECONDS="${VPC_CLEANUP_WAIT_SECONDS:-900}"
 VPC_CLEANUP_POLL_SECONDS="${VPC_CLEANUP_POLL_SECONDS:-15}"
 VPC_LINK_DELETE_WAIT_SECONDS="${VPC_LINK_DELETE_WAIT_SECONDS:-600}"
 VPC_LINK_DELETE_POLL_SECONDS="${VPC_LINK_DELETE_POLL_SECONDS:-10}"
-
-log() {
-  printf '\n[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
-}
-
-require_cmd() {
-  if ! command -v "$1" >/dev/null 2>&1; then
-    echo "Comando obrigatorio nao encontrado: $1" >&2
-    exit 1
-  fi
-}
-
-require_non_empty() {
-  local value="$1"
-  local name="$2"
-
-  if [[ -z "${value}" ]]; then
-    echo "Variavel obrigatoria ausente: ${name}" >&2
-    exit 1
-  fi
-}
 
 node_group_exists() {
   aws eks describe-nodegroup \
