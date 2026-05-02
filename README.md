@@ -43,7 +43,9 @@ O repositório segue um layout em diretórios:
 - `k8s/overlays/lab-platform`: componentes base do cluster gerenciados por este repositório
 - `k8s/overlays/lab-app`: recursos do `oficina-app`
 - `k8s/overlays/lab`: composição final do ambiente Kubernetes
-- `scripts/`: automações operacionais e de CI
+- `scripts/actions/`: automações usadas pelos workflows
+- `scripts/manual/`: automações de uso manual e operacional
+- `scripts/lib/`: helpers compartilhados dos scripts
 - `docs/telemetria.md`: convenção de telemetria vendor-neutral da suíte
 
 ## Arquitetura dos serviços
@@ -381,7 +383,7 @@ Depois aplique a aplicação:
 
 ```bash
 IMAGE_REF=<registry>/oficina:<tag> \
-./scripts/deploy-manual.sh
+./scripts/manual/deploy-manual.sh
 ```
 
 O script:
@@ -395,7 +397,7 @@ O script:
 Para acesso local:
 
 ```bash
-./scripts/start-port-forwards.sh
+./scripts/manual/start-port-forwards.sh
 ```
 
 ## Deploy com GitHub Actions
@@ -410,7 +412,7 @@ O workflow `Deploy Lab` executa em pushes para `develop` e `main`. O job `valida
 
 Em pushes para `develop`, depois que o job `validate` passa, o workflow abre automaticamente um pull request para `main` quando ainda não existir um PR aberto e houver diferença de conteúdo entre as branches. Merges reversos de `main` para `develop` sem mudança de arquivos não geram novo PR.
 
-No deploy em `main`, o workflow executa `scripts/ci-deploy.sh`. Esse script aplica o Terraform, atualiza o kubeconfig do EKS e aplica sempre o overlay `k8s/overlays/lab-platform`, que inclui MailHog e observabilidade. O `oficina-app` fica fora do fluxo padrao deste repositório e só entra quando `DEPLOY_APP=true`; nesse modo, o script também aplica `k8s/overlays/lab-app`, resolve `IMAGE_REF` a partir de `IMAGE_REF`, `IMAGE_TAG` ou da tag mais recente do ECR configurado, e prepara os secrets de JWT e banco quando necessário.
+No deploy em `main`, o workflow executa `scripts/actions/ci-deploy.sh`. Esse script aplica o Terraform, atualiza o kubeconfig do EKS e aplica sempre o overlay `k8s/overlays/lab-platform`, que inclui MailHog e observabilidade. O `oficina-app` fica fora do fluxo padrao deste repositório e só entra quando `DEPLOY_APP=true`; nesse modo, o script também aplica `k8s/overlays/lab-app`, resolve `IMAGE_REF` a partir de `IMAGE_REF`, `IMAGE_TAG` ou da tag mais recente do ECR configurado, e prepara os secrets de JWT e banco quando necessário.
 
 Os jobs usam o GitHub Environment `lab` para centralizar `vars` e `secrets`.
 
@@ -557,7 +559,7 @@ terraform -chdir=terraform/environments/lab validate
 kubectl kustomize k8s/overlays/lab-platform >/tmp/oficina-lab-platform-rendered.yaml
 kubectl kustomize k8s/overlays/lab-app >/tmp/oficina-lab-app-rendered.yaml
 kubectl kustomize k8s/overlays/lab >/tmp/oficina-lab-rendered.yaml
-bash -n scripts/*.sh
+bash -n scripts/*.sh scripts/actions/*.sh scripts/manual/*.sh scripts/lib/*.sh
 ```
 
 ## Perfil de custo

@@ -71,10 +71,10 @@ Comandos úteis:
 
 - `terraform -chdir=terraform/environments/lab plan -var-file=terraform.tfvars`
 - `terraform -chdir=terraform/environments/lab apply -var-file=terraform.tfvars`
-- `bash ./scripts/ci-terraform.sh`
-- `bash ./scripts/ci-deploy.sh`
-- `./scripts/deploy-manual.sh`
-- `./scripts/start-port-forwards.sh`
+- `bash ./scripts/actions/ci-terraform.sh`
+- `bash ./scripts/actions/ci-deploy.sh`
+- `./scripts/manual/deploy-manual.sh`
+- `./scripts/manual/start-port-forwards.sh`
 
 Se alguma verificação não puder ser executada, registre isso claramente na resposta final.
 

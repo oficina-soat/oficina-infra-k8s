@@ -64,4 +64,4 @@ jobs:
 
       - name: Deactivate EKS only
         shell: bash
-        run: bash ./scripts/ci-terraform.sh
+        run: bash ./scripts/actions/ci-terraform.sh

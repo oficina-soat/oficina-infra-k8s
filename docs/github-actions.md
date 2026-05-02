@@ -22,9 +22,9 @@ O job de validacao executa:
 - `kubectl kustomize k8s/overlays/lab-platform`
 - `kubectl kustomize k8s/overlays/lab-app`
 - `kubectl kustomize k8s/overlays/lab`
-- `bash -n scripts/*.sh`
+- `bash -n scripts/*.sh scripts/actions/*.sh scripts/manual/*.sh scripts/lib/*.sh`
 
-O job de deploy roda depois da validacao apenas quando a ref e `main`. Ele usa o GitHub Environment `lab`, configura as credenciais AWS e executa `bash ./scripts/ci-deploy.sh`. Esse script faz bootstrap do backend S3 quando necessario, migra o state para o backend remoto, executa `terraform apply`, atualiza o kubeconfig do EKS e aplica sempre o overlay `k8s/overlays/lab-platform`.
+O job de deploy roda depois da validacao apenas quando a ref e `main`. Ele usa o GitHub Environment `lab`, configura as credenciais AWS e executa `bash ./scripts/actions/ci-deploy.sh`. Esse script faz bootstrap do backend S3 quando necessario, migra o state para o backend remoto, executa `terraform apply`, atualiza o kubeconfig do EKS e aplica sempre o overlay `k8s/overlays/lab-platform`.
 
 O overlay `k8s/overlays/lab-platform` inclui os pods e recursos de cluster que pertencem a este repositorio, como MailHog e observabilidade. Quando `DEPLOY_APP=true`, o mesmo fluxo tambem aplica `k8s/overlays/lab-app` e cria ou atualiza os secrets Kubernetes necessarios para JWT e, quando configurado, para variaveis de banco.
 
@@ -32,7 +32,7 @@ Em pushes para `develop`, o workflow tambem abre automaticamente um pull request
 
 ## Deactivate EKS Lab
 
-O workflow `Deactivate EKS Lab` desativa somente o EKS. Ele exige confirmacao manual com o valor `DEACTIVATE` e executa `bash ./scripts/ci-terraform.sh` com:
+O workflow `Deactivate EKS Lab` desativa somente o EKS. Ele exige confirmacao manual com o valor `DEACTIVATE` e executa `bash ./scripts/actions/ci-terraform.sh` com:
 
 - `TERRAFORM_ACTION=destroy`
 - `TERRAFORM_DESTROY_TARGETS=module.eks`
@@ -44,7 +44,7 @@ Esse workflow exige state remoto existente. Rode `Deploy Lab` pelo menos uma vez
 
 ## Destroy Lab
 
-O workflow `Destroy Lab` desmonta a suite inteira do laboratorio. Ele exige confirmacao manual com o valor `DESTROY` e executa primeiro `bash ./scripts/cleanup-suite-aws.sh`, seguido de `bash ./scripts/ci-terraform.sh`.
+O workflow `Destroy Lab` desmonta a suite inteira do laboratorio. Ele exige confirmacao manual com o valor `DESTROY` e executa primeiro `bash ./scripts/actions/cleanup-suite-aws.sh`, seguido de `bash ./scripts/actions/ci-terraform.sh`.
 
 O cleanup previo remove recursos que este repositorio nao gerencia diretamente no state, mas que ainda prendem a VPC compartilhada ou continuam cobrando:
 
