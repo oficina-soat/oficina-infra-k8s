@@ -11,7 +11,7 @@ AWS_REGION="${AWS_REGION:-us-east-1}"
 EKS_CLUSTER_NAME="${EKS_CLUSTER_NAME:-}"
 UPDATE_KUBECONFIG="${UPDATE_KUBECONFIG:-false}"
 IMAGE_REF="${IMAGE_REF:-}"
-DEPLOY_APP="${DEPLOY_APP:-true}"
+DEPLOY_APP="${DEPLOY_APP:-auto}"
 REGENERATE_JWT="${REGENERATE_JWT:-false}"
 JWT_DIR="${JWT_DIR:-.tmp/jwt}"
 OFICINA_AUTH_ISSUER="${OFICINA_AUTH_ISSUER:-oficina-api}"
@@ -36,11 +36,10 @@ Uso:
   $(basename "$0")
 
 Variaveis suportadas:
-  IMAGE_REF              Imagem da aplicacao. Obrigatoria se DEPLOY_APP=true
+  IMAGE_REF              Imagem da aplicacao. Quando ausente, aplica somente a plataforma
   UPDATE_KUBECONFIG      true|false. Default: false
   EKS_CLUSTER_NAME       Obrigatoria para renderizar os overlays do laboratorio
   AWS_REGION             Regiao AWS. Default: us-east-1
-  DEPLOY_APP             true|false. Default: true
   REGENERATE_JWT         true|false. Default: false; chaves ausentes em JWT_DIR ainda sao geradas
   JWT_DIR                Diretorio das chaves JWT. Default: .tmp/jwt
   OFICINA_AUTH_ISSUER    Issuer esperado pela aplicacao. Default: oficina-api
@@ -223,6 +222,22 @@ require_cmd kubectl
 require_cmd sed
 prepare_auth_config
 require_non_empty "${EKS_CLUSTER_NAME}" "EKS_CLUSTER_NAME"
+
+case "${DEPLOY_APP}" in
+  auto)
+    if [[ -n "${IMAGE_REF}" ]]; then
+      DEPLOY_APP="true"
+    else
+      DEPLOY_APP="false"
+    fi
+    ;;
+  true | false)
+    ;;
+  *)
+    echo "DEPLOY_APP invalido: ${DEPLOY_APP}. Use auto, true ou false." >&2
+    exit 1
+    ;;
+esac
 
 if [[ "${UPDATE_KUBECONFIG}" == "true" ]]; then
   require_cmd aws

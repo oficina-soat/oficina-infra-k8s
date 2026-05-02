@@ -61,7 +61,6 @@ jobs:
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
       EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME || 'eks-lab' }}
-      DEPLOY_APP: ${{ vars.DEPLOY_APP || 'false' }}
       IMAGE_REF: ${{ vars.IMAGE_REF }}
       IMAGE_TAG: ${{ vars.IMAGE_TAG }}
       REGENERATE_JWT: ${{ vars.REGENERATE_JWT || 'false' }}

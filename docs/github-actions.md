@@ -26,7 +26,7 @@ O job de validação executa:
 
 O job de deploy roda depois da validação apenas quando a ref e `main`. Ele usa o GitHub Environment `lab`, configura as credenciais AWS e executa `bash ./scripts/actions/ci-deploy.sh`. Esse script faz bootstrap do backend S3 quando necessario, migra o state para o backend remoto, executa `terraform apply`, atualiza o kubeconfig do EKS e aplica sempre o overlay `k8s/overlays/lab-platform`.
 
-O overlay `k8s/overlays/lab-platform` inclui os pods e recursos de cluster que pertencem a este repositório, como MailHog e observabilidade. Quando `DEPLOY_APP=true`, o mesmo fluxo também aplica `k8s/overlays/lab-app` e cria ou atualiza os secrets Kubernetes necessários para JWT e, quando configurado, para variáveis de banco.
+O overlay `k8s/overlays/lab-platform` inclui os pods e recursos de cluster que pertencem a este repositório, como MailHog e observabilidade. O deploy da aplicação roda em modo automático: quando há `IMAGE_REF`, `IMAGE_TAG` válida ou uma tag recente no ECR configurado, o mesmo fluxo também aplica `k8s/overlays/lab-app` e cria ou atualiza os secrets Kubernetes necessários para JWT e, quando configurado, para variáveis de banco.
 
 Em pushes para `develop`, o workflow também abre automaticamente um pull request para `main` depois que o job de validação passa. Antes de criar um novo PR, ele verifica se ha diferenças de conteúdo entre `develop` e `main` e se já existe um PR aberto de `develop` para `main`. Merges reversos de `main` para `develop` sem alteração de arquivos não geram novo PR.
 
@@ -101,8 +101,7 @@ Variáveis principais:
 
 - `AWS_REGION`
 - `EKS_CLUSTER_NAME`
-- `DEPLOY_APP`: default `false`; quando `true`, este workflow também aplica `k8s/overlays/lab-app`
-- `IMAGE_REF` ou `IMAGE_TAG` para definir a imagem da aplicação quando `DEPLOY_APP=true`. Se ambos forem omitidos, o workflow tenta usar a tag mais recente do ECR configurado
+- `IMAGE_REF` ou `IMAGE_TAG` para definir a imagem da aplicação. Se ambos forem omitidos, o workflow tenta usar a tag mais recente do ECR configurado
 
 Variáveis opcionais:
 

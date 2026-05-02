@@ -387,9 +387,9 @@ IMAGE_REF=<registry>/oficina:<tag> \
 O script:
 
 - aplica sempre o overlay `k8s/overlays/lab-platform`
-- reutiliza o secret `oficina-database-env` quando ele existir, apenas quando `DEPLOY_APP=true`
-- reutiliza chaves JWT em `JWT_DIR`; se ausentes, gera um par local, apenas quando `DEPLOY_APP=true`
-- aplica o overlay `k8s/overlays/lab-app` somente quando `DEPLOY_APP=true`
+- reutiliza o secret `oficina-database-env` quando ele existir, apenas quando `IMAGE_REF` for informado
+- reutiliza chaves JWT em `JWT_DIR`; se ausentes, gera um par local, apenas quando `IMAGE_REF` for informado
+- aplica o overlay `k8s/overlays/lab-app` somente quando `IMAGE_REF` for informado
 
 Para acesso local:
 
@@ -408,7 +408,7 @@ O workflow `Deploy Lab` executa em pushes para `develop` e `main`. O job `valida
 
 Em pushes para `develop`, depois que o job `validate` passa, o workflow abre automaticamente um pull request para `main` quando ainda não existir um PR aberto e houver diferença de conteúdo entre as branches. Merges reversos de `main` para `develop` sem mudança de arquivos não geram novo PR.
 
-No deploy em `main`, o workflow executa `scripts/actions/ci-deploy.sh`. Esse script aplica o Terraform, atualiza o kubeconfig do EKS e aplica sempre o overlay `k8s/overlays/lab-platform`, que inclui MailHog e observabilidade. O `oficina-app` fica fora do fluxo padrao deste repositório e só entra quando `DEPLOY_APP=true`; nesse modo, o script também aplica `k8s/overlays/lab-app`, resolve `IMAGE_REF` a partir de `IMAGE_REF`, `IMAGE_TAG` ou da tag mais recente do ECR configurado, e prepara os secrets de JWT e banco quando necessário.
+No deploy em `main`, o workflow executa `scripts/actions/ci-deploy.sh`. Esse script aplica o Terraform, atualiza o kubeconfig do EKS e aplica sempre o overlay `k8s/overlays/lab-platform`, que inclui MailHog e observabilidade. O deploy da aplicação roda em modo automático: se `IMAGE_REF` for informado, se `IMAGE_TAG` existir no ECR ou se houver uma tag recente no ECR configurado, o script aplica `k8s/overlays/lab-app` e prepara os secrets de JWT e banco quando necessário; se não houver imagem disponível, ele mantém somente a plataforma.
 
 Os jobs usam o GitHub Environment `lab` para centralizar `vars` e `secrets`.
 
@@ -420,8 +420,7 @@ Valores esperados no Environment:
 
 - `AWS_REGION`
 - `EKS_CLUSTER_NAME`
-- `DEPLOY_APP`: default `false`; quando `true`, este workflow também aplica `k8s/overlays/lab-app`
-- `IMAGE_REF` ou `IMAGE_TAG`: imagem da aplicação quando `DEPLOY_APP=true`. Se ambos forem omitidos, o workflow tenta usar a tag mais recente do ECR configurado
+- `IMAGE_REF` ou `IMAGE_TAG`: imagem da aplicação. Se ambos forem omitidos, o workflow tenta usar a tag mais recente do ECR configurado
 - `AWS_ACCESS_KEY_ID`: credencial AWS em `secrets`
 - `AWS_SECRET_ACCESS_KEY`: credencial AWS em `secrets`
 - `AWS_SESSION_TOKEN`: opcional, mas necessário quando o laboratório entregar credenciais temporárias
