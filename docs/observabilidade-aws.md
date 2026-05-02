@@ -39,7 +39,7 @@ Esta etapa conecta a base vendor-neutral da suíte Oficina a serviços nativos d
 
 ## Recursos com custo recorrente mesmo com baixo tráfego
 
-- `Route 53 Health Checks`, enquanto `OBSERVABILITY_ENABLE_ROUTE53_HEALTHCHECKS=true`
+- `Route 53 Health Checks`, enquanto a stack AWS-native estiver ativa
 - `CloudWatch Dashboard`, se a conta ultrapassar a faixa gratuita
 - métricas customizadas contínuas de CPU/memória do `oficina-app`, enquanto `OBSERVABILITY_ENABLE_K8S_RESOURCE_METRICS=true`
 - retenção de logs nos log groups do `oficina-app`, API Gateway e Prometheus/EMF
@@ -53,7 +53,6 @@ O caminho integrado continua sendo o workflow `Deploy Lab`.
 Para deixar a observabilidade AWS-native ligada:
 
 - `OBSERVABILITY_ENABLED=true`
-- `OBSERVABILITY_ENABLE_ROUTE53_HEALTHCHECKS=true`
 - `OBSERVABILITY_ENABLE_K8S_RESOURCE_METRICS=true`
 - `OBSERVABILITY_MANAGE_NODE_ROLE_POLICY_ATTACHMENT=true` somente se o runner do deploy tiver permissao `iam:AttachRolePolicy`
 
@@ -64,8 +63,6 @@ Para reduzir custo recorrente sem mexer no resto da stack:
 - `OBSERVABILITY_ENABLE_K8S_RESOURCE_METRICS=false`
   - mantém logs, dashboard, alarmes e healthchecks
   - escala o `cwagent-prometheus` para `0`
-- `OBSERVABILITY_ENABLE_ROUTE53_HEALTHCHECKS=false`
-  - remove os healthchecks e os alarmes deles
 - `OBSERVABILITY_ENABLED=false`
   - remove toda a stack AWS-native de observabilidade do `lab`
 

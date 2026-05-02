@@ -13,7 +13,7 @@ AWS_REGION="${AWS_REGION:-}"
 EKS_CLUSTER_NAME="${EKS_CLUSTER_NAME:-}"
 export TF_VAR_region="${TF_VAR_region:-${AWS_REGION}}"
 export TF_VAR_cluster_name="${TF_VAR_cluster_name:-${EKS_CLUSTER_NAME}}"
-export TF_VAR_ecr_repository_name="${TF_VAR_ecr_repository_name:-oficina}"
+export TF_VAR_ecr_repository_name="${TF_VAR_ecr_repository_name:-${ECR_REPOSITORY_NAME:-oficina}}"
 TF_STATE_BUCKET="${TF_STATE_BUCKET:-}"
 TF_STATE_KEY="${TF_STATE_KEY:-${OFICINA_TF_STATE_KEY}}"
 TF_STATE_REGION="${TF_STATE_REGION:-${AWS_REGION}}"
@@ -679,7 +679,6 @@ require_non_empty "${AWS_REGION}" "AWS_REGION"
 require_non_empty "${EKS_CLUSTER_NAME}" "EKS_CLUSTER_NAME"
 
 if [[ "${TERRAFORM_ACTION}" == "apply" ]]; then
-  require_non_empty "${TF_VAR_kubernetes_version:-}" "TF_VAR_kubernetes_version"
   set_eks_role_defaults
 elif [[ "${TERRAFORM_ACTION}" == "destroy" && -z "${TERRAFORM_DESTROY_TARGETS:-}" ]]; then
   set_eks_role_defaults

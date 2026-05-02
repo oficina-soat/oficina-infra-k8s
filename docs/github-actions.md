@@ -101,49 +101,28 @@ Variáveis principais:
 
 - `AWS_REGION`
 - `EKS_CLUSTER_NAME`
-- `KUBERNETES_VERSION`
 - `DEPLOY_APP`: default `false`; quando `true`, este workflow também aplica `k8s/overlays/lab-app`
 - `IMAGE_REF` ou `IMAGE_TAG` para definir a imagem da aplicação quando `DEPLOY_APP=true`. Se ambos forem omitidos, o workflow tenta usar a tag mais recente do ECR configurado
-
-Se `KUBERNETES_VERSION` não for informado em `vars`, o workflow usa o padrao `1.35`.
 
 Variáveis opcionais:
 
 - `EKS_ACCESS_PRINCIPAL_ARN`
 - `EKS_CLUSTER_ROLE_ARN`
 - `EKS_NODE_ROLE_ARN`
-- `EKS_INSTANCE_TYPE`
-- `EKS_NODE_CAPACITY_TYPE`
-- `EKS_NODE_AMI_TYPE`
-- `EKS_DESIRED_SIZE`
-- `EKS_MIN_SIZE`
-- `EKS_MAX_SIZE`
 - `EKS_AZS`: lista JSON, por exemplo `["us-east-1a","us-east-1b"]`
 - `EKS_PUBLIC_SUBNET_CIDRS`: lista JSON, por exemplo `["10.0.0.0/20","10.0.16.0/20"]`
 - `EKS_CLUSTER_ENDPOINT_PUBLIC_ACCESS_CIDRS`: lista JSON de CIDRs
 - `ECR_REPOSITORY_NAME`
-- `CREATE_ECR_REPOSITORY`: default `true`; use `false` apenas quando o laboratório precisar reaproveitar um ECR externo
-- `CREATE_API_GATEWAY`
 - `API_GATEWAY_NAME`
-- `API_GATEWAY_STAGE_NAME`
-- `API_GATEWAY_ENABLE_ACCESS_LOGS`
-- `API_GATEWAY_ACCESS_LOG_RETENTION_IN_DAYS`
-- `API_GATEWAY_DEFAULT_ROUTE_THROTTLING_BURST_LIMIT`
-- `API_GATEWAY_DEFAULT_ROUTE_THROTTLING_RATE_LIMIT`
 - `API_GATEWAY_VPC_LINK_SUBNET_IDS`: lista JSON de subnets
 - `API_GATEWAY_VPC_LINK_SECURITY_GROUP_IDS`: lista JSON de security groups
-- `API_GATEWAY_CREATE_VPC_LINK_SECURITY_GROUP`
 - `EXPOSE_MAILHOG_SMTP_PRIVATE_NLB`: default `true`; cria o NLB interno do SMTP do MailHog para a `notificacao-lambda`
-- `MAILHOG_SMTP_NODE_PORT`: default `31025`; deve bater com o manifesto Kubernetes `mailhog-smtp-private`
-- `MAILHOG_SMTP_PRIVATE_LISTENER_PORT`: default `1025`
 - `NOTIFICACAO_LAMBDA_SECURITY_GROUP_NAME`: nome do SG dedicado da `notificacao-lambda`; default `<EKS_CLUSTER_NAME>-notificacao-lambda`
 - `API_GATEWAY_HTTP_ROUTES`: objeto JSON compatível com `api_gateway_http_routes`
 - `API_GATEWAY_LAMBDA_ROUTES`: objeto JSON compatível com `api_gateway_lambda_routes`
 - `API_GATEWAY_JWT_AUTHORIZERS`: objeto JSON compatível com `api_gateway_jwt_authorizers`
 - `OFICINA_APP_API_GATEWAY_JWT_AUTHORIZER_ENABLED`: default `false`; quando `true`, protege as rotas padrão da aplicação com JWT
 - `OFICINA_APP_API_GATEWAY_JWT_ISSUER`: issuer do authorizer; quando ausente, usa o endpoint publico do próprio HTTP API
-- `OFICINA_APP_API_GATEWAY_JWT_AUDIENCE`: lista JSON de audiences; default `["oficina-app"]`
-- `OFICINA_APP_API_GATEWAY_JWT_SCOPES`: lista JSON de scopes exigidos pelo authorizer; default `["oficina-app"]`
 - `OFICINA_AUTH_ISSUER`: issuer repassado ao ConfigMap da aplicação; quando ausente no deploy integrado, e derivado do endpoint do API Gateway
 - `OFICINA_AUTH_JWKS_URI`: JWKS repassado ao ConfigMap da aplicação; quando ausente no deploy integrado, e derivado de `OFICINA_AUTH_ISSUER`
 - `OFICINA_AUTH_FORCE_LEGACY`: default `false`; quando `true`, preserva explicitamente o modo legado `oficina-api` + `file:/jwt/publicKey.pem`
@@ -159,31 +138,12 @@ Variáveis opcionais:
 - `OTEL_METRICS_EXPORTER`: default `none`
 - `OTEL_LOGS_EXPORTER`: default `none`
 - `OBSERVABILITY_ENABLED`: default `true`; liga a stack AWS-native de observabilidade
-- `OBSERVABILITY_ENVIRONMENT_NAME`: default `lab`
-- `OBSERVABILITY_ENABLE_DASHBOARD`: default `true`
-- `OBSERVABILITY_ENABLE_ROUTE53_HEALTHCHECKS`: default `true`
 - `OBSERVABILITY_ENABLE_K8S_RESOURCE_METRICS`: default `true`; quando `false`, o deploy aplica `cwagent-prometheus` com `replicas=0`
 - `OBSERVABILITY_MANAGE_NODE_ROLE_POLICY_ATTACHMENT`: default `false`; use `true` apenas quando o runner puder executar `iam:AttachRolePolicy` na role dos nodes do EKS
 - `OBSERVABILITY_ALERT_EMAIL_ENDPOINTS`: lista JSON de emails inscritos nos tópicos SNS, por exemplo `["ops@example.com"]`
-- `OBSERVABILITY_APP_LOG_RETENTION_IN_DAYS`: default `14`
-- `OBSERVABILITY_PROMETHEUS_LOG_RETENTION_IN_DAYS`: default `7`
-- `OBSERVABILITY_METRIC_NAMESPACE`: default `Oficina/Observability`
-- `OBSERVABILITY_API_LATENCY_WARNING_THRESHOLD_MS`: default `1500`
-- `OBSERVABILITY_API_LATENCY_CRITICAL_THRESHOLD_MS`: default `3000`
-- `OBSERVABILITY_INTEGRATION_FAILURES_WARNING_THRESHOLD`: default `1`
-- `OBSERVABILITY_INTEGRATION_FAILURES_CRITICAL_THRESHOLD`: default `3`
-- `OBSERVABILITY_OS_PROCESSING_FAILURES_WARNING_THRESHOLD`: default `1`
-- `OBSERVABILITY_OS_PROCESSING_FAILURES_CRITICAL_THRESHOLD`: default `3`
-- `OBSERVABILITY_ALARM_PERIOD_SECONDS`: default `300`
-- `OBSERVABILITY_APP_LOG_GROUP_NAME`: default `/oficina/lab/eks/oficina-app`
-- `OBSERVABILITY_PROMETHEUS_LOG_GROUP_NAME`: default `/aws/containerinsights/<EKS_CLUSTER_NAME>/prometheus`
-- `OBSERVABILITY_FLUENT_BIT_IMAGE`: default `public.ecr.aws/aws-observability/aws-for-fluent-bit:2.34.3.20260423`
-- `OBSERVABILITY_CWAGENT_IMAGE`: default `public.ecr.aws/cloudwatch-agent/cloudwatch-agent:1.300066.1`
 
 Quando `OFICINA_APP_API_GATEWAY_JWT_AUTHORIZER_ENABLED=true`, o workflow passa a aplicar no `oficina-app` um JWT authorizer com issuer do gateway atual (ou override explicito), audience `["oficina-app"]` e scope `["oficina-app"]` por default. Nesse modo, o gateway protege a aplicação por default e deixa públicos apenas `/q/swagger-ui`, `/q/swagger-ui/`, `/q/swagger-ui/*`, `GET /q/health/live`, `GET /q/health/ready` e as rotas vigentes de magic link.
-- `CREATE_TERRAFORM_SHARED_DATA_BUCKET`
 - `TERRAFORM_SHARED_DATA_BUCKET_NAME`
-- `TERRAFORM_SHARED_DATA_BUCKET_FORCE_DESTROY`
 - `TF_STATE_BUCKET`
 - `TF_STATE_KEY`
 - `TF_STATE_REGION`
@@ -193,8 +153,6 @@ Quando `OFICINA_APP_API_GATEWAY_JWT_AUTHORIZER_ENABLED=true`, o workflow passa a
 - `FETCH_RUNTIME_SECRETS_FROM_AWS`
 - `K8S_DATABASE_SECRET_ID`
 - `K8S_JWT_SECRET_ID`: default `oficina/lab/jwt`; usado para criar/reutilizar o par JWT compartilhado com o `oficina-auth-lambda`
-- `K8S_JWT_SECRET_PRIVATE_KEY_FIELD`: default `privateKeyPem`
-- `K8S_JWT_SECRET_PUBLIC_KEY_FIELD`: default `publicKeyPem`
 - `K8S_JWT_SECRET_KMS_KEY_ID`: KMS key opcional para criação do secret JWT
 
 Secrets opcionais:

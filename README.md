@@ -420,54 +420,33 @@ Valores esperados no Environment:
 
 - `AWS_REGION`
 - `EKS_CLUSTER_NAME`
-- `KUBERNETES_VERSION`
 - `DEPLOY_APP`: default `false`; quando `true`, este workflow também aplica `k8s/overlays/lab-app`
 - `IMAGE_REF` ou `IMAGE_TAG`: imagem da aplicação quando `DEPLOY_APP=true`. Se ambos forem omitidos, o workflow tenta usar a tag mais recente do ECR configurado
 - `AWS_ACCESS_KEY_ID`: credencial AWS em `secrets`
 - `AWS_SECRET_ACCESS_KEY`: credencial AWS em `secrets`
 - `AWS_SESSION_TOKEN`: opcional, mas necessário quando o laboratório entregar credenciais temporárias
 
-Se `KUBERNETES_VERSION` não for informado em `vars`, o workflow usa o padrão `1.35`.
-
 Valores opcionais no Environment:
 
 - `EKS_ACCESS_PRINCIPAL_ARN`
 - `EKS_CLUSTER_ROLE_ARN`
 - `EKS_NODE_ROLE_ARN`
-- `EKS_INSTANCE_TYPE`
-- `EKS_NODE_CAPACITY_TYPE`
-- `EKS_NODE_AMI_TYPE`
-- `EKS_DESIRED_SIZE`
-- `EKS_MIN_SIZE`
-- `EKS_MAX_SIZE`
 - `EKS_AZS`: lista JSON, por exemplo `["us-east-1a","us-east-1b"]`
 - `EKS_PUBLIC_SUBNET_CIDRS`: lista JSON, por exemplo `["10.0.0.0/20","10.0.16.0/20"]`
 - `EKS_CLUSTER_ENDPOINT_PUBLIC_ACCESS_CIDRS`: lista JSON de CIDRs
 - `ECR_REPOSITORY_NAME`
-- `CREATE_ECR_REPOSITORY`: default `true`; crie override para `false` apenas se quiser reaproveitar um ECR externo
-- `CREATE_API_GATEWAY`
 - `API_GATEWAY_NAME`
-- `API_GATEWAY_STAGE_NAME`
-- `API_GATEWAY_ENABLE_ACCESS_LOGS`
-- `API_GATEWAY_ACCESS_LOG_RETENTION_IN_DAYS`
-- `API_GATEWAY_DEFAULT_ROUTE_THROTTLING_BURST_LIMIT`
-- `API_GATEWAY_DEFAULT_ROUTE_THROTTLING_RATE_LIMIT`
 - `API_GATEWAY_VPC_LINK_SUBNET_IDS`: lista JSON de subnets
 - `API_GATEWAY_VPC_LINK_SECURITY_GROUP_IDS`: lista JSON de security groups
-- `API_GATEWAY_CREATE_VPC_LINK_SECURITY_GROUP`
 - `API_GATEWAY_HTTP_ROUTES`: objeto JSON compatível com `api_gateway_http_routes`
 - `API_GATEWAY_LAMBDA_ROUTES`: objeto JSON compatível com `api_gateway_lambda_routes`
 - `API_GATEWAY_JWT_AUTHORIZERS`: objeto JSON compatível com `api_gateway_jwt_authorizers`
 - `OFICINA_APP_API_GATEWAY_JWT_AUTHORIZER_ENABLED`: default `false`; quando `true`, protege as rotas padrão da aplicação com JWT
 - `OFICINA_APP_API_GATEWAY_JWT_ISSUER`: issuer do authorizer; quando ausente, usa o endpoint público do próprio HTTP API
-- `OFICINA_APP_API_GATEWAY_JWT_AUDIENCE`: lista JSON de audiences; default `["oficina-app"]`
-- `OFICINA_APP_API_GATEWAY_JWT_SCOPES`: lista JSON de scopes exigidos pelo authorizer; default `["oficina-app"]`
 - `OFICINA_AUTH_ISSUER`: issuer repassado ao ConfigMap da aplicação; quando ausente no deploy integrado, é derivado do endpoint do API Gateway
 - `OFICINA_AUTH_JWKS_URI`: JWKS repassado ao ConfigMap da aplicação; quando ausente no deploy integrado, é derivado de `OFICINA_AUTH_ISSUER`
 - `OFICINA_AUTH_FORCE_LEGACY`: default `false`; quando `true`, preserva explicitamente o modo legado `oficina-api` + `file:/jwt/publicKey.pem`
-- `CREATE_TERRAFORM_SHARED_DATA_BUCKET`
 - `TERRAFORM_SHARED_DATA_BUCKET_NAME`
-- `TERRAFORM_SHARED_DATA_BUCKET_FORCE_DESTROY`
 - `TF_STATE_BUCKET`
 - `TF_STATE_KEY`
 - `TF_STATE_REGION`
@@ -477,8 +456,6 @@ Valores opcionais no Environment:
 - `FETCH_RUNTIME_SECRETS_FROM_AWS`
 - `K8S_DATABASE_SECRET_ID`
 - `K8S_JWT_SECRET_ID`: default `oficina/lab/jwt`; usado para criar/reutilizar o par JWT compartilhado com o `oficina-auth-lambda`
-- `K8S_JWT_SECRET_PRIVATE_KEY_FIELD`: default `privateKeyPem`
-- `K8S_JWT_SECRET_PUBLIC_KEY_FIELD`: default `publicKeyPem`
 - `K8S_JWT_SECRET_KMS_KEY_ID`: KMS key opcional para criação do secret JWT
 
 Secret opcional:
