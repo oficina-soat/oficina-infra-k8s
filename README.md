@@ -402,7 +402,6 @@ Para acesso local:
 O repositório mantém três workflows para o ambiente de laboratório:
 
 - [`.github/workflows/deploy-lab.yml`](.github/workflows/deploy-lab.yml): valida o repositório, aplica a infraestrutura Terraform e converge os componentes base do cluster no EKS
-- [`.github/workflows/eks-deactivate-lab.yml`](.github/workflows/eks-deactivate-lab.yml): remove somente o módulo EKS para reduzir custo quando o laboratório estiver parado
 - [`.github/workflows/destroy-lab.yml`](.github/workflows/destroy-lab.yml): remove a infraestrutura completa criada pelo repositório para zerar o custo recorrente do laboratório quando ele não estiver em uso
 
 O workflow `Deploy Lab` executa em pushes para `develop` e `main`. O job `validate` roda nas duas branches, mas o job de deploy só roda quando a ref é `main`. A execução manual por `workflow_dispatch` também deve ser feita a partir de `main`.
@@ -422,7 +421,7 @@ Valores esperados no Environment:
 - `AWS_REGION`
 - `EKS_CLUSTER_NAME`
 - `KUBERNETES_VERSION`
-- `DEPLOY_APP`: default `false`; quando `true`, este workflow tambem aplica `k8s/overlays/lab-app`
+- `DEPLOY_APP`: default `false`; quando `true`, este workflow também aplica `k8s/overlays/lab-app`
 - `IMAGE_REF` ou `IMAGE_TAG`: imagem da aplicação quando `DEPLOY_APP=true`. Se ambos forem omitidos, o workflow tenta usar a tag mais recente do ECR configurado
 - `AWS_ACCESS_KEY_ID`: credencial AWS em `secrets`
 - `AWS_SECRET_ACCESS_KEY`: credencial AWS em `secrets`

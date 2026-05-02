@@ -20,15 +20,15 @@ OFICINA_AUTH_FORCE_LEGACY="${OFICINA_AUTH_FORCE_LEGACY:-false}"
 API_GATEWAY_ID="${API_GATEWAY_ID:-}"
 API_GATEWAY_NAME="${API_GATEWAY_NAME:-${EKS_CLUSTER_NAME:+${EKS_CLUSTER_NAME}-http-api}}"
 OBSERVABILITY_ENABLED="${OBSERVABILITY_ENABLED:-true}"
-OBSERVABILITY_APP_LOG_GROUP_NAME="${OBSERVABILITY_APP_LOG_GROUP_NAME:-/oficina/lab/eks/oficina-app}"
+OBSERVABILITY_APP_LOG_GROUP_NAME="${OBSERVABILITY_APP_LOG_GROUP_NAME:-${OFICINA_OBSERVABILITY_APP_LOG_GROUP_NAME}}"
 OBSERVABILITY_PROMETHEUS_LOG_GROUP_NAME="${OBSERVABILITY_PROMETHEUS_LOG_GROUP_NAME:-${EKS_CLUSTER_NAME:+/aws/containerinsights/${EKS_CLUSTER_NAME}/prometheus}}"
 OBSERVABILITY_ENABLE_K8S_RESOURCE_METRICS="${OBSERVABILITY_ENABLE_K8S_RESOURCE_METRICS:-true}"
 OBSERVABILITY_FLUENT_BIT_IMAGE="${OBSERVABILITY_FLUENT_BIT_IMAGE:-public.ecr.aws/aws-observability/aws-for-fluent-bit:2.34.3.20260423}"
 OBSERVABILITY_CWAGENT_IMAGE="${OBSERVABILITY_CWAGENT_IMAGE:-public.ecr.aws/cloudwatch-agent/cloudwatch-agent:1.300066.1}"
-DB_SECRET_NAME="oficina-database-env"
+DB_SECRET_NAME="${DB_SECRET_NAME:-${OFICINA_DB_K8S_SECRET_NAME}}"
 APP_NAMESPACE="default"
-PLATFORM_ENV_DIR="k8s/overlays/lab-platform"
-APP_ENV_DIR="k8s/overlays/lab-app"
+PLATFORM_ENV_DIR="${PLATFORM_ENV_DIR:-${OFICINA_PLATFORM_OVERLAY_DIR}}"
+APP_ENV_DIR="${APP_ENV_DIR:-${OFICINA_APP_OVERLAY_DIR}}"
 
 usage() {
   cat <<EOF
@@ -49,7 +49,7 @@ Variaveis suportadas:
   API_GATEWAY_ID         Opcional; ID do HTTP API usado para descobrir o issuer publico
   API_GATEWAY_NAME       Opcional; default <EKS_CLUSTER_NAME>-http-api
   OBSERVABILITY_ENABLED                    true|false. Default: true
-  OBSERVABILITY_APP_LOG_GROUP_NAME         Default: /oficina/lab/eks/oficina-app
+  OBSERVABILITY_APP_LOG_GROUP_NAME         Default: ${OFICINA_OBSERVABILITY_APP_LOG_GROUP_NAME}
   OBSERVABILITY_PROMETHEUS_LOG_GROUP_NAME  Default: /aws/containerinsights/<EKS_CLUSTER_NAME>/prometheus
   OBSERVABILITY_ENABLE_K8S_RESOURCE_METRICS true|false. Default: true
   OBSERVABILITY_FLUENT_BIT_IMAGE           Imagem fixa do AWS for Fluent Bit
@@ -135,18 +135,18 @@ secret_exists() {
 }
 
 show_app_diagnostics() {
-  log "Diagnostico do deployment oficina-app"
-  kubectl get deployment/oficina-app service/oficina-app \
+  log "Diagnostico do deployment ${OFICINA_APP_NAME}"
+  kubectl get "deployment/${OFICINA_APP_NAME}" "service/${OFICINA_APP_NAME}" \
     --namespace "${APP_NAMESPACE}" \
     --output wide || true
   kubectl get pods \
     --namespace "${APP_NAMESPACE}" \
-    --selector app.kubernetes.io/name=oficina-app \
+    --selector "app.kubernetes.io/name=${OFICINA_APP_NAME}" \
     --output wide || true
-  kubectl describe deployment/oficina-app --namespace "${APP_NAMESPACE}" || true
+  kubectl describe "deployment/${OFICINA_APP_NAME}" --namespace "${APP_NAMESPACE}" || true
   kubectl logs \
     --namespace "${APP_NAMESPACE}" \
-    --selector app.kubernetes.io/name=oficina-app \
+    --selector "app.kubernetes.io/name=${OFICINA_APP_NAME}" \
     --tail=120 \
     --all-containers=true || true
 }
@@ -155,13 +155,13 @@ verify_app_service_endpoints() {
   local endpoint_ips=""
 
   endpoint_ips="$(
-    kubectl get endpoints oficina-app \
+    kubectl get endpoints "${OFICINA_APP_NAME}" \
       --namespace "${APP_NAMESPACE}" \
       -o jsonpath='{.subsets[*].addresses[*].ip}' 2>/dev/null || true
   )"
 
   if [[ -z "${endpoint_ips}" ]]; then
-    echo "Service oficina-app nao possui endpoints prontos apos o rollout." >&2
+    echo "Service ${OFICINA_APP_NAME} nao possui endpoints prontos apos o rollout." >&2
     show_app_diagnostics
     exit 1
   fi
@@ -293,8 +293,8 @@ if [[ "${DEPLOY_APP}" == "true" ]]; then
     exit 1
   fi
 
-  log "Aplicando secret oficina-jwt-keys"
-  kubectl create secret generic oficina-jwt-keys \
+  log "Aplicando secret ${OFICINA_JWT_K8S_SECRET_NAME}"
+  kubectl create secret generic "${OFICINA_JWT_K8S_SECRET_NAME}" \
     --from-file=privateKey.pem="${JWT_DIR}/privateKey.pem" \
     --from-file=publicKey.pem="${JWT_DIR}/publicKey.pem" \
     --namespace "${APP_NAMESPACE}" \
@@ -303,10 +303,10 @@ if [[ "${DEPLOY_APP}" == "true" ]]; then
   log "Aplicando ambiente de laboratorio da aplicacao"
   render_app_overlay | kubectl apply -f -
 
-  log "Reiniciando deployment oficina-app para aplicar secrets/configmaps atualizados"
-  kubectl rollout restart deployment/oficina-app --namespace "${APP_NAMESPACE}"
+  log "Reiniciando deployment ${OFICINA_APP_NAME} para aplicar secrets/configmaps atualizados"
+  kubectl rollout restart "deployment/${OFICINA_APP_NAME}" --namespace "${APP_NAMESPACE}"
 
-  if ! kubectl rollout status deployment/oficina-app --namespace "${APP_NAMESPACE}" --timeout=300s; then
+  if ! kubectl rollout status "deployment/${OFICINA_APP_NAME}" --namespace "${APP_NAMESPACE}" --timeout=300s; then
     show_app_diagnostics
     exit 1
   fi

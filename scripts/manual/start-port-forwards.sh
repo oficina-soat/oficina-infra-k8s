@@ -102,7 +102,7 @@ FORWARD_MAILHOG=${FORWARD_MAILHOG}
 EOF
 
 if [[ "${FORWARD_APP}" == "true" ]]; then
-  start_port_forward "${APP_NAMESPACE}" "oficina-app" "8080:8080" "oficina-app" "Aplicacao: http://localhost:8080"
+  start_port_forward "${APP_NAMESPACE}" "${OFICINA_APP_NAME}" "8080:8080" "${OFICINA_APP_NAME}" "Aplicacao: http://localhost:8080"
 fi
 
 if [[ "${FORWARD_MAILHOG}" == "true" ]]; then

@@ -7,18 +7,18 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 source "${SCRIPT_DIR}/../lib/common.sh"
 
-TERRAFORM_DIR="${TERRAFORM_DIR:-${REPO_ROOT}/terraform/environments/lab}"
+TERRAFORM_DIR="${TERRAFORM_DIR:-${OFICINA_TERRAFORM_ENV_DIR}}"
 AWS_REGION="${AWS_REGION:-}"
 EKS_CLUSTER_NAME="${EKS_CLUSTER_NAME:-}"
 IMAGE_REF="${IMAGE_REF:-}"
 IMAGE_TAG="${IMAGE_TAG:-}"
 TF_STATE_BUCKET="${TF_STATE_BUCKET:-}"
-TF_STATE_KEY="${TF_STATE_KEY:-oficina/lab/terraform.tfstate}"
+TF_STATE_KEY="${TF_STATE_KEY:-${OFICINA_TF_STATE_KEY}}"
 TF_STATE_REGION="${TF_STATE_REGION:-${AWS_REGION}}"
 TF_STATE_DYNAMODB_TABLE="${TF_STATE_DYNAMODB_TABLE:-}"
 K8S_DATABASE_ENV_FILE="${K8S_DATABASE_ENV_FILE:-}"
-K8S_DATABASE_SECRET_ID="${K8S_DATABASE_SECRET_ID:-oficina/lab/database/app}"
-K8S_JWT_SECRET_ID="${K8S_JWT_SECRET_ID:-oficina/lab/jwt}"
+K8S_DATABASE_SECRET_ID="${K8S_DATABASE_SECRET_ID:-${OFICINA_DB_APP_SECRET_ID}}"
+K8S_JWT_SECRET_ID="${K8S_JWT_SECRET_ID:-${OFICINA_JWT_SECRET_ID}}"
 K8S_JWT_SECRET_PRIVATE_KEY_FIELD="${K8S_JWT_SECRET_PRIVATE_KEY_FIELD:-privateKeyPem}"
 K8S_JWT_SECRET_PUBLIC_KEY_FIELD="${K8S_JWT_SECRET_PUBLIC_KEY_FIELD:-publicKeyPem}"
 K8S_JWT_SECRET_KMS_KEY_ID="${K8S_JWT_SECRET_KMS_KEY_ID:-}"
@@ -154,13 +154,13 @@ create_or_rotate_jwt_secret_in_secrets_manager() {
         --region "${AWS_REGION}" \
         --name "${K8S_JWT_SECRET_ID}" \
         --kms-key-id "${K8S_JWT_SECRET_KMS_KEY_ID}" \
-        --description "Chaves JWT compartilhadas da Oficina no ambiente lab" \
+        --description "Chaves JWT compartilhadas da Oficina no ambiente ${OFICINA_ENVIRONMENT_NAME}" \
         --secret-string "file://${secret_json_file}" >/dev/null
     else
       aws secretsmanager create-secret \
         --region "${AWS_REGION}" \
         --name "${K8S_JWT_SECRET_ID}" \
-        --description "Chaves JWT compartilhadas da Oficina no ambiente lab" \
+        --description "Chaves JWT compartilhadas da Oficina no ambiente ${OFICINA_ENVIRONMENT_NAME}" \
         --secret-string "file://${secret_json_file}" >/dev/null
     fi
   fi
@@ -369,7 +369,7 @@ apply_database_secret_from_file() {
   ensure_database_quarkus_envs "${env_file}"
   ensure_database_ssl_envs "${env_file}"
 
-  kubectl create secret generic oficina-database-env \
+  kubectl create secret generic "${OFICINA_DB_K8S_SECRET_NAME}" \
     --namespace default \
     --from-env-file="${env_file}" \
     --dry-run=client -o yaml | kubectl apply -f -
@@ -381,18 +381,18 @@ prepare_database_secret() {
   if [[ -n "${K8S_DATABASE_ENV_FILE:-}" ]]; then
     db_env_file="$(mktemp)"
     printf '%s' "${K8S_DATABASE_ENV_FILE:-}" > "${db_env_file}"
-    log "Criando/atualizando secret Kubernetes oficina-database-env a partir de K8S_DATABASE_ENV_FILE."
+    log "Criando/atualizando secret Kubernetes ${OFICINA_DB_K8S_SECRET_NAME} a partir de K8S_DATABASE_ENV_FILE."
     apply_database_secret_from_file "${db_env_file}"
     return
   fi
 
   if ! is_truthy "${FETCH_RUNTIME_SECRETS_FROM_AWS}"; then
-    log "Busca de runtime secrets na AWS desabilitada; nao criarei oficina-database-env automaticamente."
+    log "Busca de runtime secrets na AWS desabilitada; nao criarei ${OFICINA_DB_K8S_SECRET_NAME} automaticamente."
     return
   fi
 
   if [[ -z "${K8S_DATABASE_SECRET_ID:-}" ]]; then
-    log "K8S_DATABASE_SECRET_ID ausente; nao criarei oficina-database-env automaticamente."
+    log "K8S_DATABASE_SECRET_ID ausente; nao criarei ${OFICINA_DB_K8S_SECRET_NAME} automaticamente."
     return
   fi
 
@@ -412,7 +412,7 @@ prepare_database_secret() {
   write_secret_string_as_env_file "${secret_string_file}" "${db_env_file}"
   rm -f "${secret_string_file}"
 
-  log "Criando/atualizando secret Kubernetes oficina-database-env a partir do Secrets Manager ${K8S_DATABASE_SECRET_ID}."
+  log "Criando/atualizando secret Kubernetes ${OFICINA_DB_K8S_SECRET_NAME} a partir do Secrets Manager ${K8S_DATABASE_SECRET_ID}."
   apply_database_secret_from_file "${db_env_file}"
 }
 
@@ -586,8 +586,8 @@ resolve_image_ref() {
 
 normalize_optional_envs
 DEPLOY_APP="${DEPLOY_APP:-auto}"
-K8S_DATABASE_SECRET_ID="${K8S_DATABASE_SECRET_ID:-oficina/lab/database/app}"
-K8S_JWT_SECRET_ID="${K8S_JWT_SECRET_ID:-oficina/lab/jwt}"
+K8S_DATABASE_SECRET_ID="${K8S_DATABASE_SECRET_ID:-${OFICINA_DB_APP_SECRET_ID}}"
+K8S_JWT_SECRET_ID="${K8S_JWT_SECRET_ID:-${OFICINA_JWT_SECRET_ID}}"
 K8S_JWT_SECRET_PRIVATE_KEY_FIELD="${K8S_JWT_SECRET_PRIVATE_KEY_FIELD:-privateKeyPem}"
 K8S_JWT_SECRET_PUBLIC_KEY_FIELD="${K8S_JWT_SECRET_PUBLIC_KEY_FIELD:-publicKeyPem}"
 K8S_JWT_SECRET_KMS_KEY_ID="${K8S_JWT_SECRET_KMS_KEY_ID:-}"
@@ -638,7 +638,7 @@ OFICINA_AUTH_ISSUER="${OFICINA_AUTH_ISSUER:-}" \
 OFICINA_AUTH_JWKS_URI="${OFICINA_AUTH_JWKS_URI:-}" \
 OFICINA_AUTH_FORCE_LEGACY="${OFICINA_AUTH_FORCE_LEGACY:-false}" \
 OBSERVABILITY_ENABLED="${OBSERVABILITY_ENABLED:-true}" \
-OBSERVABILITY_APP_LOG_GROUP_NAME="${OBSERVABILITY_APP_LOG_GROUP_NAME:-/oficina/lab/eks/oficina-app}" \
+OBSERVABILITY_APP_LOG_GROUP_NAME="${OBSERVABILITY_APP_LOG_GROUP_NAME:-${OFICINA_OBSERVABILITY_APP_LOG_GROUP_NAME}}" \
 OBSERVABILITY_PROMETHEUS_LOG_GROUP_NAME="${OBSERVABILITY_PROMETHEUS_LOG_GROUP_NAME:-/aws/containerinsights/${EKS_CLUSTER_NAME}/prometheus}" \
 OBSERVABILITY_ENABLE_K8S_RESOURCE_METRICS="${OBSERVABILITY_ENABLE_K8S_RESOURCE_METRICS:-true}" \
 OBSERVABILITY_FLUENT_BIT_IMAGE="${OBSERVABILITY_FLUENT_BIT_IMAGE:-public.ecr.aws/aws-observability/aws-for-fluent-bit:2.34.3.20260423}" \

@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       confirm_destroy:
-        description: "Digite DESTROY para confirmar a remocao completa da infraestrutura do lab"
+        description: "Digite DESTROY para confirmar a remoção completa da infraestrutura do lab"
         required: true
         type: string
       delete_runtime_secrets:
-        description: "Tambem remove os secrets runtime compartilhados da suite no Secrets Manager"
+        description: "Também remove os secrets runtime compartilhados da suite no Secrets Manager"
         required: true
         default: true
         type: boolean
@@ -18,12 +18,12 @@ on:
         default: true
         type: boolean
       delete_lambda_artifact_objects:
-        description: "Tambem remove os objetos de artefato das Lambdas no bucket S3 configurado"
+        description: "Também remove os objetos de artefato das Lambdas no bucket S3 configurado"
         required: true
         default: false
         type: boolean
       delete_shared_state_bucket:
-        description: "Tambem remove o bucket S3 compartilhado de state ao final do destroy, incluindo todos os versions e states remotos da suite"
+        description: "Também remove o bucket S3 compartilhado de state ao final do destroy, incluindo todos os versions e states remotos da suite"
         required: true
         default: false
         type: boolean
@@ -135,7 +135,7 @@ jobs:
 
           for name in "${required_vars[@]}"; do
             if [[ -z "${!name:-}" ]]; then
-              echo "Configuracao obrigatoria ausente em vars/secrets do GitHub (organization, repository ou environment): ${name}" >&2
+              echo "Configuração obrigatória ausente em vars/secrets do GitHub (organization, repository ou environment): ${name}" >&2
               exit 1
             fi
           done

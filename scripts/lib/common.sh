@@ -6,6 +6,8 @@ fi
 
 OFICINA_SCRIPT_COMMON_SH_LOADED=true
 
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/defaults.sh"
+
 log() {
   printf '\n[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
 }
