@@ -22,7 +22,7 @@ O job de validacao executa:
 - `kubectl kustomize k8s/overlays/lab-platform`
 - `kubectl kustomize k8s/overlays/lab-app`
 - `kubectl kustomize k8s/overlays/lab`
-- `bash -n scripts/*.sh scripts/actions/*.sh scripts/manual/*.sh scripts/lib/*.sh`
+- `find scripts -type f -name '*.sh' -print0 | xargs -0 bash -n`
 
 O job de deploy roda depois da validacao apenas quando a ref e `main`. Ele usa o GitHub Environment `lab`, configura as credenciais AWS e executa `bash ./scripts/actions/ci-deploy.sh`. Esse script faz bootstrap do backend S3 quando necessario, migra o state para o backend remoto, executa `terraform apply`, atualiza o kubeconfig do EKS e aplica sempre o overlay `k8s/overlays/lab-platform`.
 
@@ -188,7 +188,6 @@ Quando `OFICINA_APP_API_GATEWAY_JWT_AUTHORIZER_ENABLED=true`, o workflow passa a
 - `TF_STATE_KEY`
 - `TF_STATE_REGION`
 - `TF_STATE_DYNAMODB_TABLE`
-- `DEPLOY_KEYCLOAK`
 - `REGENERATE_JWT`: default `false`; use `true` apenas para rotacionar explicitamente chaves locais
 - `ROTATE_JWT_SECRET`: default `false`; quando `true`, rotaciona o secret JWT no Secrets Manager
 - `FETCH_RUNTIME_SECRETS_FROM_AWS`

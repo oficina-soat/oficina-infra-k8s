@@ -12,7 +12,6 @@ EKS_CLUSTER_NAME="${EKS_CLUSTER_NAME:-}"
 UPDATE_KUBECONFIG="${UPDATE_KUBECONFIG:-false}"
 IMAGE_REF="${IMAGE_REF:-}"
 DEPLOY_APP="${DEPLOY_APP:-true}"
-DEPLOY_KEYCLOAK="${DEPLOY_KEYCLOAK:-false}"
 REGENERATE_JWT="${REGENERATE_JWT:-false}"
 JWT_DIR="${JWT_DIR:-.tmp/jwt}"
 OFICINA_AUTH_ISSUER="${OFICINA_AUTH_ISSUER:-oficina-api}"
@@ -42,7 +41,6 @@ Variaveis suportadas:
   EKS_CLUSTER_NAME       Obrigatoria para renderizar os overlays do laboratorio
   AWS_REGION             Regiao AWS. Default: us-east-1
   DEPLOY_APP             true|false. Default: true
-  DEPLOY_KEYCLOAK        true|false. Default: false
   REGENERATE_JWT         true|false. Default: false; chaves ausentes em JWT_DIR ainda sao geradas
   JWT_DIR                Diretorio das chaves JWT. Default: .tmp/jwt
   OFICINA_AUTH_ISSUER    Issuer esperado pela aplicacao. Default: oficina-api
@@ -252,7 +250,6 @@ APP_NAMESPACE=${APP_NAMESPACE}
 PLATFORM_ENV_DIR=${PLATFORM_ENV_DIR}
 APP_ENV_DIR=${APP_ENV_DIR}
 DEPLOY_APP=${DEPLOY_APP}
-DEPLOY_KEYCLOAK=${DEPLOY_KEYCLOAK}
 REGENERATE_JWT=${REGENERATE_JWT}
 JWT_DIR=${JWT_DIR}
 OFICINA_AUTH_ISSUER=${OFICINA_AUTH_ISSUER}
@@ -315,12 +312,6 @@ if [[ "${DEPLOY_APP}" == "true" ]]; then
   fi
 
   verify_app_service_endpoints
-fi
-
-if [[ "${DEPLOY_KEYCLOAK}" == "true" ]]; then
-  log "Aplicando manifests do Keycloak"
-  kubectl apply -k k8s/addons/keycloak
-  kubectl rollout status deployment/keycloak --namespace keycloak --timeout=180s
 fi
 
 log "Deploy concluido"

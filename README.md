@@ -8,7 +8,7 @@ O projeto provisiona a base da nuvem e converge o cluster do laboratório com:
 - cluster Amazon EKS com managed node group mínimo para laboratório
 - repositório Amazon ECR opcional para a imagem da aplicação
 - API Gateway HTTP API com logs e throttling, pronto para expor app HTTP e Lambdas de forma opcional
-- manifests Kubernetes organizados com `kustomize` em `base`, `components`, `addons` e `overlays`
+- manifests Kubernetes organizados com `kustomize` em `base`, `components` e `overlays`
 - telemetria vendor-neutral preparada com logs JSON, OpenTelemetry e probes HTTP no `oficina-app`
 - workflow de GitHub Actions para validar `develop`, promover mudanças para `main` via PR e convergir a infraestrutura e os componentes base do cluster após merge em `main`
 - workflow manual de GitHub Actions para desativar somente o EKS sem remover VPC, ECR, API Gateway e state remoto
@@ -39,7 +39,6 @@ O repositório segue um layout em diretórios:
 - `terraform/environments/lab`: root module do ambiente atual, com provider, inputs e outputs
 - `k8s/base/oficina-app`: `Deployment` e `Service` base da aplicação
 - `k8s/components/mailhog`: componente de e-mail usado no laboratório
-- `k8s/addons/keycloak`: addon opcional para demonstração
 - `k8s/overlays/lab-platform`: componentes base do cluster gerenciados por este repositório
 - `k8s/overlays/lab-app`: recursos do `oficina-app`
 - `k8s/overlays/lab`: composição final do ambiente Kubernetes
@@ -78,7 +77,6 @@ flowchart TB
 
           fb[DaemonSet fluent-bit]
           cwagent[Deployment cwagent-prometheus]
-          keycloak[Addon opcional Keycloak<br/>ClusterIP 8080]
         end
       end
 
@@ -392,7 +390,6 @@ O script:
 - reutiliza o secret `oficina-database-env` quando ele existir, apenas quando `DEPLOY_APP=true`
 - reutiliza chaves JWT em `JWT_DIR`; se ausentes, gera um par local, apenas quando `DEPLOY_APP=true`
 - aplica o overlay `k8s/overlays/lab-app` somente quando `DEPLOY_APP=true`
-- opcionalmente publica o addon `k8s/addons/keycloak`
 
 Para acesso local:
 
@@ -476,7 +473,6 @@ Valores opcionais no Environment:
 - `TF_STATE_KEY`
 - `TF_STATE_REGION`
 - `TF_STATE_DYNAMODB_TABLE`
-- `DEPLOY_KEYCLOAK`
 - `REGENERATE_JWT`: default `false`; use `true` apenas para rotacionar explicitamente chaves locais
 - `ROTATE_JWT_SECRET`: default `false`; quando `true`, rotaciona o secret JWT no Secrets Manager
 - `FETCH_RUNTIME_SECRETS_FROM_AWS`
@@ -559,7 +555,7 @@ terraform -chdir=terraform/environments/lab validate
 kubectl kustomize k8s/overlays/lab-platform >/tmp/oficina-lab-platform-rendered.yaml
 kubectl kustomize k8s/overlays/lab-app >/tmp/oficina-lab-app-rendered.yaml
 kubectl kustomize k8s/overlays/lab >/tmp/oficina-lab-rendered.yaml
-bash -n scripts/*.sh scripts/actions/*.sh scripts/manual/*.sh scripts/lib/*.sh
+find scripts -type f -name '*.sh' -print0 | xargs -0 bash -n
 ```
 
 ## Perfil de custo
@@ -570,10 +566,9 @@ Padrões pensados para laboratório acadêmico:
 - sem NAT Gateway
 - managed node group mínimo
 - `t3.medium` por padrão
-- repositório ECR opcional
+- repositório ECR
 - API Gateway HTTP API com logs e throttling padrão
 - MailHog dentro do cluster
-- Keycloak apenas como addon opcional de demonstração
 
 Esses padrões preservam:
 

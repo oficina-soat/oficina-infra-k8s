@@ -16,7 +16,7 @@ Os diretórios principais são:
 
 - `terraform/modules`: módulos reutilizáveis da infraestrutura AWS
 - `terraform/environments/lab`: root module do ambiente atual
-- `k8s/base`, `k8s/components`, `k8s/addons` e `k8s/overlays/lab`: composição Kubernetes
+- `k8s/base`, `k8s/components` e `k8s/overlays/lab`: composição Kubernetes
 - `scripts/`: automações de deploy manual, CI Terraform, CI deploy, port-forward e limpeza operacional
 - `docs/`: documentação de estrutura e GitHub Actions
 
@@ -38,7 +38,7 @@ Quando esses repositórios estiverem disponíveis, eles devem ser consultados pa
 
 ## Diretrizes Gerais
 
-- Preserve a estrutura já usada no projeto: módulos Terraform reutilizáveis em `terraform/modules`, ambiente em `terraform/environments/lab` e composição Kubernetes em `k8s/base`, `k8s/components`, `k8s/addons` e `k8s/overlays`.
+- Preserve a estrutura já usada no projeto: módulos Terraform reutilizáveis em `terraform/modules`, ambiente em `terraform/environments/lab` e composição Kubernetes em `k8s/base`, `k8s/components` e `k8s/overlays`.
 - Prefira mudanças pequenas, objetivas e compatíveis com o padrão existente em Terraform, Kubernetes, scripts e workflows.
 - Ao adicionar ou ajustar integração de infraestrutura, dê preferência aos recursos já adotados no projeto antes de introduzir novas variações arquiteturais.
 - Evite introduzir módulos, recursos, variáveis, scripts ou workflows novos sem necessidade clara.
@@ -63,7 +63,7 @@ Antes de encerrar uma alteração, execute a validação compatível com o impac
 - `terraform -chdir=terraform/environments/lab init -backend=false`
 - `terraform -chdir=terraform/environments/lab validate`
 - `kubectl kustomize k8s/overlays/lab`
-- `bash -n scripts/*.sh`
+- `find scripts -type f -name '*.sh' -print0 | xargs -0 bash -n`
 
 Use validações adicionais quando a mudança afetar comportamento de deploy, bootstrap do state, integração com AWS ou renderização de manifests.
 
