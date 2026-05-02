@@ -41,11 +41,11 @@ Se a mudança afetar `base`, `components`, `addons` ou `overlays`, garanta que o
 Valide scripts alterados com:
 
 ```bash
-bash -n scripts/deploy-manual.sh
-bash -n scripts/cleanup-orphan-eks.sh
-bash -n scripts/start-port-forwards.sh
-bash -n scripts/ci-deploy.sh
-bash -n scripts/ci-terraform.sh
+bash -n scripts/manual/deploy-manual.sh
+bash -n scripts/manual/cleanup-orphan-eks.sh
+bash -n scripts/manual/start-port-forwards.sh
+bash -n scripts/actions/ci-deploy.sh
+bash -n scripts/actions/ci-terraform.sh
 ```
 
 ## AWS

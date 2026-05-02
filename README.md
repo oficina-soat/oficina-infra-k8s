@@ -8,7 +8,7 @@ O projeto provisiona a base da nuvem e converge o cluster do laboratório com:
 - cluster Amazon EKS com managed node group mínimo para laboratório
 - repositório Amazon ECR opcional para a imagem da aplicação
 - API Gateway HTTP API com logs e throttling, pronto para expor app HTTP e Lambdas de forma opcional
-- manifests Kubernetes organizados com `kustomize` em `base`, `components`, `addons` e `overlays`
+- manifests Kubernetes organizados com `kustomize` em `base`, `components` e `overlays`
 - telemetria vendor-neutral preparada com logs JSON, OpenTelemetry e probes HTTP no `oficina-app`
 - workflow de GitHub Actions para validar `develop`, promover mudanças para `main` via PR e convergir a infraestrutura e os componentes base do cluster após merge em `main`
 - workflow manual de GitHub Actions para desativar somente o EKS sem remover VPC, ECR, API Gateway e state remoto
@@ -39,12 +39,117 @@ O repositório segue um layout em diretórios:
 - `terraform/environments/lab`: root module do ambiente atual, com provider, inputs e outputs
 - `k8s/base/oficina-app`: `Deployment` e `Service` base da aplicação
 - `k8s/components/mailhog`: componente de e-mail usado no laboratório
-- `k8s/addons/keycloak`: addon opcional para demonstração
 - `k8s/overlays/lab-platform`: componentes base do cluster gerenciados por este repositório
 - `k8s/overlays/lab-app`: recursos do `oficina-app`
 - `k8s/overlays/lab`: composição final do ambiente Kubernetes
-- `scripts/`: automações operacionais e de CI
+- `scripts/actions/`: automações usadas pelos workflows
+- `scripts/manual/`: automações de uso manual e operacional
+- `scripts/lib/`: helpers compartilhados dos scripts
 - `docs/telemetria.md`: convenção de telemetria vendor-neutral da suíte
+
+## Arquitetura dos serviços
+
+O diagrama abaixo resume os serviços criados ou aplicados por este repositório no ambiente `lab` e os principais relacionamentos entre eles. Blocos marcados como opcionais dependem das flags de Terraform ou dos inputs de deploy correspondentes.
+
+```mermaid
+flowchart TB
+  user[Cliente HTTP] --> apigw[API Gateway HTTP API]
+
+  subgraph aws[AWS lab]
+    subgraph network[VPC do laboratorio]
+      igw[Internet Gateway]
+      subnets[2 sub-redes publicas]
+
+      subgraph eks[EKS]
+        cp[Control plane]
+        ng[Managed node group / ASG]
+
+        subgraph k8s[Kubernetes]
+          appsvc[Service oficina-app<br/>NodePort 30080]
+          apppod[Deployment oficina-app<br/>porta 8080]
+          appcfg[ConfigMap oficina-app-config]
+          jwtsecret[Secret oficina-jwt-keys]
+          dbsecret[Secret oficina-database-env<br/>opcional]
+
+          mailhogsvc[Service mailhog<br/>ClusterIP 1025/8025]
+          mailhogsmtp[Service mailhog-smtp-private<br/>NodePort 31025]
+          mailhogpod[Deployment mailhog]
+
+          fb[DaemonSet fluent-bit]
+          cwagent[Deployment cwagent-prometheus]
+        end
+      end
+
+      vpclink[VPC Link]
+      appnlb[NLB interno oficina-app<br/>listener 8080]
+      smtpnlb[NLB interno MailHog SMTP<br/>listener 1025]
+      apisg[SG VPC Link oficina-app]
+      notifsg[SG notificacao-lambda]
+      lambdabackends[Lambdas externas<br/>rotas opcionais]
+    end
+
+    ecr[ECR oficina-app<br/>opcional/reutilizavel]
+    s3[S3 bucket compartilhado Terraform]
+
+    subgraph obs[Observabilidade AWS-native]
+      apilogs[CloudWatch Logs<br/>API Gateway]
+      applogs[CloudWatch Logs<br/>oficina-app]
+      promlogs[CloudWatch Logs<br/>ContainerInsights/Prometheus]
+      metrics[CloudWatch metric filters]
+      alarms[CloudWatch alarms]
+      dashboard[CloudWatch dashboard]
+      sns[SNS warning/critical]
+      r53[Route 53 health checks<br/>opcional]
+    end
+  end
+
+  apigw --> apilogs
+  apigw --> vpclink
+  apigw -.AWS_PROXY opcional.-> lambdabackends
+  igw --> subnets
+  subnets --> cp
+  subnets --> ng
+  subnets --> vpclink
+  subnets --> appnlb
+  subnets --> smtpnlb
+  vpclink --> apisg
+  apisg --> appnlb
+  appnlb --> ng
+  ng --> appsvc
+  appsvc --> apppod
+  appcfg --> apppod
+  jwtsecret --> apppod
+  dbsecret -.env opcional.-> apppod
+  ecr --> apppod
+
+  apppod --> mailhogsvc
+  mailhogsvc --> mailhogpod
+  mailhogsmtp --> mailhogpod
+  notiflambda[notificacao-lambda<br/>repo externo] -.usa SG dedicado.-> notifsg
+  notifsg --> smtpnlb
+  smtpnlb --> ng
+  ng --> mailhogsmtp
+
+  authlambda[auth-lambda / JWKS<br/>repo externo] -.issuer/JWKS.-> apppod
+  database[(PostgreSQL lab<br/>repo externo)] -.credenciais via secret.-> dbsecret
+
+  fb --> applogs
+  fb -.le logs dos pods.-> apppod
+  cwagent -.scrape cAdvisor.-> ng
+  cwagent --> promlogs
+  apilogs --> metrics
+  applogs --> metrics
+  promlogs --> dashboard
+  metrics --> alarms
+  alarms --> sns
+  r53 -.GET /q/health.-> apigw
+  r53 --> alarms
+
+  s3 -.state/dados compartilhados.-> terraform[Terraform lab]
+  terraform -.provisiona.-> subnets
+  terraform -.provisiona.-> ecr
+  terraform -.provisiona.-> obs
+```
 
 ## Estado do Terraform
 
@@ -276,21 +381,20 @@ Depois aplique a aplicação:
 
 ```bash
 IMAGE_REF=<registry>/oficina:<tag> \
-./scripts/deploy-manual.sh
+./scripts/manual/deploy-manual.sh
 ```
 
 O script:
 
 - aplica sempre o overlay `k8s/overlays/lab-platform`
-- reutiliza o secret `oficina-database-env` quando ele existir, apenas quando `DEPLOY_APP=true`
-- reutiliza chaves JWT em `JWT_DIR`; se ausentes, gera um par local, apenas quando `DEPLOY_APP=true`
-- aplica o overlay `k8s/overlays/lab-app` somente quando `DEPLOY_APP=true`
-- opcionalmente publica o addon `k8s/addons/keycloak`
+- reutiliza o secret `oficina-database-env` quando ele existir, apenas quando `IMAGE_REF` for informado
+- reutiliza chaves JWT em `JWT_DIR`; se ausentes, gera um par local, apenas quando `IMAGE_REF` for informado
+- aplica o overlay `k8s/overlays/lab-app` somente quando `IMAGE_REF` for informado
 
 Para acesso local:
 
 ```bash
-./scripts/start-port-forwards.sh
+./scripts/manual/start-port-forwards.sh
 ```
 
 ## Deploy com GitHub Actions
@@ -298,14 +402,13 @@ Para acesso local:
 O repositório mantém três workflows para o ambiente de laboratório:
 
 - [`.github/workflows/deploy-lab.yml`](.github/workflows/deploy-lab.yml): valida o repositório, aplica a infraestrutura Terraform e converge os componentes base do cluster no EKS
-- [`.github/workflows/eks-deactivate-lab.yml`](.github/workflows/eks-deactivate-lab.yml): remove somente o módulo EKS para reduzir custo quando o laboratório estiver parado
 - [`.github/workflows/destroy-lab.yml`](.github/workflows/destroy-lab.yml): remove a infraestrutura completa criada pelo repositório para zerar o custo recorrente do laboratório quando ele não estiver em uso
 
 O workflow `Deploy Lab` executa em pushes para `develop` e `main`. O job `validate` roda nas duas branches, mas o job de deploy só roda quando a ref é `main`. A execução manual por `workflow_dispatch` também deve ser feita a partir de `main`.
 
 Em pushes para `develop`, depois que o job `validate` passa, o workflow abre automaticamente um pull request para `main` quando ainda não existir um PR aberto e houver diferença de conteúdo entre as branches. Merges reversos de `main` para `develop` sem mudança de arquivos não geram novo PR.
 
-No deploy em `main`, o workflow executa `scripts/ci-deploy.sh`. Esse script aplica o Terraform, atualiza o kubeconfig do EKS e aplica sempre o overlay `k8s/overlays/lab-platform`, que inclui MailHog e observabilidade. O `oficina-app` fica fora do fluxo padrao deste repositório e só entra quando `DEPLOY_APP=true`; nesse modo, o script também aplica `k8s/overlays/lab-app`, resolve `IMAGE_REF` a partir de `IMAGE_REF`, `IMAGE_TAG` ou da tag mais recente do ECR configurado, e prepara os secrets de JWT e banco quando necessário.
+No deploy em `main`, o workflow executa `scripts/actions/ci-deploy.sh`. Esse script aplica o Terraform, atualiza o kubeconfig do EKS e aplica sempre o overlay `k8s/overlays/lab-platform`, que inclui MailHog e observabilidade. O deploy da aplicação roda em modo automático: se `IMAGE_REF` for informado, se `IMAGE_TAG` existir no ECR ou se houver uma tag recente no ECR configurado, o script aplica `k8s/overlays/lab-app` e prepara os secrets de JWT e banco quando necessário; se não houver imagem disponível, ele mantém somente a plataforma.
 
 Os jobs usam o GitHub Environment `lab` para centralizar `vars` e `secrets`.
 
@@ -317,66 +420,41 @@ Valores esperados no Environment:
 
 - `AWS_REGION`
 - `EKS_CLUSTER_NAME`
-- `KUBERNETES_VERSION`
-- `DEPLOY_APP`: default `false`; quando `true`, este workflow tambem aplica `k8s/overlays/lab-app`
-- `IMAGE_REF` ou `IMAGE_TAG`: imagem da aplicação quando `DEPLOY_APP=true`. Se ambos forem omitidos, o workflow tenta usar a tag mais recente do ECR configurado
+- `IMAGE_REF` ou `IMAGE_TAG`: imagem da aplicação. Se ambos forem omitidos, o workflow tenta usar a tag mais recente do ECR configurado
 - `AWS_ACCESS_KEY_ID`: credencial AWS em `secrets`
 - `AWS_SECRET_ACCESS_KEY`: credencial AWS em `secrets`
 - `AWS_SESSION_TOKEN`: opcional, mas necessário quando o laboratório entregar credenciais temporárias
-
-Se `KUBERNETES_VERSION` não for informado em `vars`, o workflow usa o padrão `1.35`.
 
 Valores opcionais no Environment:
 
 - `EKS_ACCESS_PRINCIPAL_ARN`
 - `EKS_CLUSTER_ROLE_ARN`
 - `EKS_NODE_ROLE_ARN`
-- `EKS_INSTANCE_TYPE`
-- `EKS_NODE_CAPACITY_TYPE`
-- `EKS_NODE_AMI_TYPE`
-- `EKS_DESIRED_SIZE`
-- `EKS_MIN_SIZE`
-- `EKS_MAX_SIZE`
 - `EKS_AZS`: lista JSON, por exemplo `["us-east-1a","us-east-1b"]`
 - `EKS_PUBLIC_SUBNET_CIDRS`: lista JSON, por exemplo `["10.0.0.0/20","10.0.16.0/20"]`
 - `EKS_CLUSTER_ENDPOINT_PUBLIC_ACCESS_CIDRS`: lista JSON de CIDRs
 - `ECR_REPOSITORY_NAME`
-- `CREATE_ECR_REPOSITORY`: default `true`; crie override para `false` apenas se quiser reaproveitar um ECR externo
-- `CREATE_API_GATEWAY`
 - `API_GATEWAY_NAME`
-- `API_GATEWAY_STAGE_NAME`
-- `API_GATEWAY_ENABLE_ACCESS_LOGS`
-- `API_GATEWAY_ACCESS_LOG_RETENTION_IN_DAYS`
-- `API_GATEWAY_DEFAULT_ROUTE_THROTTLING_BURST_LIMIT`
-- `API_GATEWAY_DEFAULT_ROUTE_THROTTLING_RATE_LIMIT`
 - `API_GATEWAY_VPC_LINK_SUBNET_IDS`: lista JSON de subnets
 - `API_GATEWAY_VPC_LINK_SECURITY_GROUP_IDS`: lista JSON de security groups
-- `API_GATEWAY_CREATE_VPC_LINK_SECURITY_GROUP`
 - `API_GATEWAY_HTTP_ROUTES`: objeto JSON compatível com `api_gateway_http_routes`
 - `API_GATEWAY_LAMBDA_ROUTES`: objeto JSON compatível com `api_gateway_lambda_routes`
 - `API_GATEWAY_JWT_AUTHORIZERS`: objeto JSON compatível com `api_gateway_jwt_authorizers`
 - `OFICINA_APP_API_GATEWAY_JWT_AUTHORIZER_ENABLED`: default `false`; quando `true`, protege as rotas padrão da aplicação com JWT
 - `OFICINA_APP_API_GATEWAY_JWT_ISSUER`: issuer do authorizer; quando ausente, usa o endpoint público do próprio HTTP API
-- `OFICINA_APP_API_GATEWAY_JWT_AUDIENCE`: lista JSON de audiences; default `["oficina-app"]`
-- `OFICINA_APP_API_GATEWAY_JWT_SCOPES`: lista JSON de scopes exigidos pelo authorizer; default `["oficina-app"]`
 - `OFICINA_AUTH_ISSUER`: issuer repassado ao ConfigMap da aplicação; quando ausente no deploy integrado, é derivado do endpoint do API Gateway
 - `OFICINA_AUTH_JWKS_URI`: JWKS repassado ao ConfigMap da aplicação; quando ausente no deploy integrado, é derivado de `OFICINA_AUTH_ISSUER`
 - `OFICINA_AUTH_FORCE_LEGACY`: default `false`; quando `true`, preserva explicitamente o modo legado `oficina-api` + `file:/jwt/publicKey.pem`
-- `CREATE_TERRAFORM_SHARED_DATA_BUCKET`
 - `TERRAFORM_SHARED_DATA_BUCKET_NAME`
-- `TERRAFORM_SHARED_DATA_BUCKET_FORCE_DESTROY`
 - `TF_STATE_BUCKET`
 - `TF_STATE_KEY`
 - `TF_STATE_REGION`
 - `TF_STATE_DYNAMODB_TABLE`
-- `DEPLOY_KEYCLOAK`
 - `REGENERATE_JWT`: default `false`; use `true` apenas para rotacionar explicitamente chaves locais
 - `ROTATE_JWT_SECRET`: default `false`; quando `true`, rotaciona o secret JWT no Secrets Manager
 - `FETCH_RUNTIME_SECRETS_FROM_AWS`
 - `K8S_DATABASE_SECRET_ID`
 - `K8S_JWT_SECRET_ID`: default `oficina/lab/jwt`; usado para criar/reutilizar o par JWT compartilhado com o `oficina-auth-lambda`
-- `K8S_JWT_SECRET_PRIVATE_KEY_FIELD`: default `privateKeyPem`
-- `K8S_JWT_SECRET_PUBLIC_KEY_FIELD`: default `publicKeyPem`
 - `K8S_JWT_SECRET_KMS_KEY_ID`: KMS key opcional para criação do secret JWT
 
 Secret opcional:
@@ -424,6 +502,8 @@ O `Destroy Lab` remove, quando existirem:
 - secrets runtime compartilhados da suíte no Secrets Manager, como `oficina/lab/jwt`, `oficina/lab/database/app`, `oficina/lab/database/auth-lambda` e seus sub-secrets, quando `delete_runtime_secrets=true`
 - objetos de artefato das Lambdas no bucket S3 configurado, quando `delete_lambda_artifact_objects=true`
 
+Antes de apagar as Lambdas, o cleanup remove a associação VPC delas para acelerar a liberação das ENIs. Se algum security group continuar preso por ENIs da AWS, o workflow continua limpando os demais recursos da suíte, deixa o `terraform destroy` avançar e, se necessário, roda um novo cleanup seguido de uma nova tentativa de destroy. Os tempos são configuráveis por `NETWORK_INTERFACE_WAIT_SECONDS` e `FINAL_NETWORK_INTERFACE_WAIT_SECONDS`.
+
 Depois disso, o workflow destrói, quando gerenciados por este repositório/state:
 
 - VPC, subnets públicas, internet gateway, route table e associações
@@ -433,6 +513,8 @@ Depois disso, o workflow destrói, quando gerenciados por este repositório/stat
 - stack de observabilidade AWS-native: log groups, metric filters, alarmes, dashboard, tópicos SNS, subscriptions e health checks do Route 53
 - repositório ECR criado por este ambiente, mesmo com imagens
 - bucket S3 compartilhado do Terraform quando ele faz parte do state deste ambiente, mesmo com objetos/versionamento
+
+Durante o destroy, o script diferencia state local temporário criado pela própria migração do backend de arquivos locais avulsos. Isso evita prompts de migração no `terraform init` com `-input=false` e permite que uma segunda tentativa continue de forma determinística depois de uma falha parcial. Após migrar o state para local, o script esvazia explicitamente o bucket versionado, removendo versões, delete markers e multipart uploads pendentes antes do Terraform tentar apagar o bucket.
 
 Para zerar custo de armazenamento do banco, o input `skip_final_db_snapshot` fica disponível no workflow. Com o default `true`, o RDS é removido sem snapshot final.
 
@@ -448,7 +530,7 @@ terraform -chdir=terraform/environments/lab validate
 kubectl kustomize k8s/overlays/lab-platform >/tmp/oficina-lab-platform-rendered.yaml
 kubectl kustomize k8s/overlays/lab-app >/tmp/oficina-lab-app-rendered.yaml
 kubectl kustomize k8s/overlays/lab >/tmp/oficina-lab-rendered.yaml
-bash -n scripts/*.sh
+find scripts -type f -name '*.sh' -print0 | xargs -0 bash -n
 ```
 
 ## Perfil de custo
@@ -459,10 +541,9 @@ Padrões pensados para laboratório acadêmico:
 - sem NAT Gateway
 - managed node group mínimo
 - `t3.medium` por padrão
-- repositório ECR opcional
+- repositório ECR
 - API Gateway HTTP API com logs e throttling padrão
 - MailHog dentro do cluster
-- Keycloak apenas como addon opcional de demonstração
 
 Esses padrões preservam:
 

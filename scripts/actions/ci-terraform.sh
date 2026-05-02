@@ -3,13 +3,19 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+export REPO_ROOT
 
-TERRAFORM_DIR="${TERRAFORM_DIR:-${REPO_ROOT}/terraform/environments/lab}"
+source "${SCRIPT_DIR}/../lib/common.sh"
+
+TERRAFORM_DIR="${TERRAFORM_DIR:-${OFICINA_TERRAFORM_ENV_DIR}}"
 AWS_REGION="${AWS_REGION:-}"
 EKS_CLUSTER_NAME="${EKS_CLUSTER_NAME:-}"
+export TF_VAR_region="${TF_VAR_region:-${AWS_REGION}}"
+export TF_VAR_cluster_name="${TF_VAR_cluster_name:-${EKS_CLUSTER_NAME}}"
+export TF_VAR_ecr_repository_name="${TF_VAR_ecr_repository_name:-${ECR_REPOSITORY_NAME:-oficina}}"
 TF_STATE_BUCKET="${TF_STATE_BUCKET:-}"
-TF_STATE_KEY="${TF_STATE_KEY:-oficina/lab/terraform.tfstate}"
+TF_STATE_KEY="${TF_STATE_KEY:-${OFICINA_TF_STATE_KEY}}"
 TF_STATE_REGION="${TF_STATE_REGION:-${AWS_REGION}}"
 TF_STATE_DYNAMODB_TABLE="${TF_STATE_DYNAMODB_TABLE:-}"
 TERRAFORM_ACTION="${TERRAFORM_ACTION:-apply}"
@@ -21,6 +27,7 @@ EFFECTIVE_TF_STATE_BUCKET=""
 backend_override_file=""
 TERRAFORM_ECR_REPOSITORY_URL_FILE="${TERRAFORM_ECR_REPOSITORY_URL_FILE:-}"
 DELETE_SHARED_STATE_BUCKET="${DELETE_SHARED_STATE_BUCKET:-false}"
+LOCAL_DESTROY_STATE_MARKER="${TERRAFORM_DIR}/.terraform-local-destroy-state"
 
 cleanup() {
   if [[ -n "${backend_override_file}" && -f "${backend_override_file}" ]]; then
@@ -29,35 +36,6 @@ cleanup() {
 }
 
 trap cleanup EXIT
-
-log() {
-  printf '\n[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
-}
-
-require_cmd() {
-  if ! command -v "$1" >/dev/null 2>&1; then
-    echo "Comando obrigatorio nao encontrado: $1" >&2
-    exit 1
-  fi
-}
-
-require_non_empty() {
-  local value="$1"
-  local name="$2"
-
-  if [[ -z "${value}" ]]; then
-    echo "Variavel obrigatoria ausente: ${name}" >&2
-    exit 1
-  fi
-}
-
-unset_if_empty() {
-  local name="$1"
-
-  if [[ -v "${name}" && -z "${!name}" ]]; then
-    unset "${name}"
-  fi
-}
 
 normalize_optional_envs() {
   unset_if_empty "TF_STATE_BUCKET"
@@ -78,17 +56,6 @@ normalize_optional_envs() {
   unset_if_empty "TF_VAR_oficina_app_api_gateway_jwt_issuer"
   unset_if_empty "TF_VAR_oficina_app_api_gateway_jwt_audience"
   unset_if_empty "TF_VAR_oficina_app_api_gateway_jwt_scopes"
-}
-
-is_truthy() {
-  case "${1:-}" in
-    true | TRUE | True | 1 | yes | YES | Yes)
-      return 0
-      ;;
-    *)
-      return 1
-      ;;
-  esac
 }
 
 aws_caller_identity() {
@@ -276,8 +243,31 @@ terraform_remote_backend_args() {
   printf '%s\n' "${args[@]}"
 }
 
+reset_terraform_backend_metadata() {
+  rm -rf "${TERRAFORM_DIR}/.terraform"
+}
+
+local_state_exists() {
+  [[ -s "${TERRAFORM_DIR}/terraform.tfstate" ]]
+}
+
+stash_local_state_for_remote_init() {
+  local suffix=""
+  local state_file=""
+  suffix="$(date '+%Y%m%d%H%M%S')-$$"
+
+  for state_file in terraform.tfstate terraform.tfstate.backup; do
+    if [[ -e "${TERRAFORM_DIR}/${state_file}" ]]; then
+      log "Isolando state local ${state_file} antes de carregar backend remoto."
+      mv "${TERRAFORM_DIR}/${state_file}" "${TERRAFORM_DIR}/${state_file}.ignored-${suffix}"
+    fi
+  done
+}
+
 terraform_init_remote() {
   mapfile -t backend_args < <(terraform_remote_backend_args)
+  stash_local_state_for_remote_init
+  reset_terraform_backend_metadata
   terraform -chdir="${TERRAFORM_DIR}" init -input=false -reconfigure "${backend_args[@]}"
 }
 
@@ -326,6 +316,7 @@ disable_remote_backend_override() {
 terraform_migrate_state_local() {
   disable_remote_backend_override
   terraform -chdir="${TERRAFORM_DIR}" init -input=false -migrate-state -force-copy
+  touch "${LOCAL_DESTROY_STATE_MARKER}"
 }
 
 terraform_state_manages_shared_bucket() {
@@ -345,11 +336,43 @@ delete_bucket_object_versions() {
   local key=""
   local version_id=""
 
+  while true; do
+    entries="$(
+      aws s3api list-object-versions \
+        --region "${TF_STATE_REGION}" \
+        --bucket "${bucket_name}" \
+        --query "${query}" \
+        --output text 2>/dev/null || true
+    )"
+
+    if [[ -z "${entries}" || "${entries}" == "None" ]]; then
+      return
+    fi
+
+    while IFS=$'\t' read -r key version_id; do
+      [[ -n "${key}" && "${key}" != "None" ]] || continue
+      [[ -n "${version_id}" && "${version_id}" != "None" ]] || continue
+
+      aws s3api delete-object \
+        --region "${TF_STATE_REGION}" \
+        --bucket "${bucket_name}" \
+        --key "${key}" \
+        --version-id "${version_id}" >/dev/null
+    done <<<"${entries}"
+  done
+}
+
+abort_bucket_multipart_uploads() {
+  local bucket_name="$1"
+  local entries=""
+  local key=""
+  local upload_id=""
+
   entries="$(
-    aws s3api list-object-versions \
+    aws s3api list-multipart-uploads \
       --region "${TF_STATE_REGION}" \
       --bucket "${bucket_name}" \
-      --query "${query}" \
+      --query 'Uploads[].[Key,UploadId]' \
       --output text 2>/dev/null || true
   )"
 
@@ -357,16 +380,34 @@ delete_bucket_object_versions() {
     return
   fi
 
-  while IFS=$'\t' read -r key version_id; do
+  while IFS=$'\t' read -r key upload_id; do
     [[ -n "${key}" && "${key}" != "None" ]] || continue
-    [[ -n "${version_id}" && "${version_id}" != "None" ]] || continue
+    [[ -n "${upload_id}" && "${upload_id}" != "None" ]] || continue
 
-    aws s3api delete-object \
+    aws s3api abort-multipart-upload \
       --region "${TF_STATE_REGION}" \
       --bucket "${bucket_name}" \
       --key "${key}" \
-      --version-id "${version_id}" >/dev/null
+      --upload-id "${upload_id}" >/dev/null 2>&1 || true
   done <<<"${entries}"
+}
+
+empty_shared_state_bucket_if_exists() {
+  local bucket_name="$1"
+
+  if [[ -z "${bucket_name}" ]]; then
+    return
+  fi
+
+  if ! aws s3api head-bucket --region "${TF_STATE_REGION}" --bucket "${bucket_name}" >/dev/null 2>&1; then
+    log "Bucket compartilhado ${bucket_name} ja nao existe; seguindo"
+    return
+  fi
+
+  log "Esvaziando bucket compartilhado versionado ${bucket_name}"
+  abort_bucket_multipart_uploads "${bucket_name}"
+  delete_bucket_object_versions "${bucket_name}" 'Versions[].[Key,VersionId]'
+  delete_bucket_object_versions "${bucket_name}" 'DeleteMarkers[].[Key,VersionId]'
 }
 
 delete_shared_state_bucket_if_requested() {
@@ -380,14 +421,11 @@ delete_shared_state_bucket_if_requested() {
     return
   fi
 
+  empty_shared_state_bucket_if_exists "${bucket_name}"
+
   if ! aws s3api head-bucket --region "${TF_STATE_REGION}" --bucket "${bucket_name}" >/dev/null 2>&1; then
-    log "Bucket compartilhado ${bucket_name} ja nao existe; seguindo"
     return
   fi
-
-  log "Removendo objetos versionados do bucket compartilhado ${bucket_name}"
-  delete_bucket_object_versions "${bucket_name}" 'Versions[].[Key,VersionId]'
-  delete_bucket_object_versions "${bucket_name}" 'DeleteMarkers[].[Key,VersionId]'
 
   log "Removendo bucket compartilhado ${bucket_name}"
   aws s3api delete-bucket \
@@ -579,6 +617,26 @@ run_destroy() {
     return
   fi
 
+  if [[ -f "${LOCAL_DESTROY_STATE_MARKER}" ]]; then
+    if ! local_state_exists; then
+      log "Marcador de destroy local encontrado, mas terraform.tfstate local nao existe; removendo marcador e carregando state remoto."
+      rm -f "${LOCAL_DESTROY_STATE_MARKER}"
+    else
+      log "State local de destroy anterior encontrado; continuando destroy sem recarregar o backend remoto."
+      terraform_init_local
+      export TF_VAR_terraform_shared_data_bucket_name="${EFFECTIVE_TF_STATE_BUCKET}"
+      set_shared_bucket_mode
+      set_ecr_repository_mode
+      if terraform_state_manages_shared_bucket; then
+        empty_shared_state_bucket_if_exists "${EFFECTIVE_TF_STATE_BUCKET}"
+      fi
+      terraform_destroy
+      delete_shared_state_bucket_if_requested "${EFFECTIVE_TF_STATE_BUCKET}"
+      rm -f "${LOCAL_DESTROY_STATE_MARKER}"
+      return
+    fi
+  fi
+
   if aws_bucket_exists; then
     export TF_VAR_terraform_shared_data_bucket_name="${EFFECTIVE_TF_STATE_BUCKET}"
 
@@ -595,6 +653,7 @@ run_destroy() {
       log "O bucket de backend faz parte do state; migrando o state para backend local antes do destroy."
       export TF_VAR_create_terraform_shared_data_bucket="true"
       terraform_migrate_state_local
+      empty_shared_state_bucket_if_exists "${EFFECTIVE_TF_STATE_BUCKET}"
     else
       log "O bucket de backend e externo ao state deste ambiente; destruindo a infraestrutura sem tocar no bucket."
       export TF_VAR_create_terraform_shared_data_bucket="false"
@@ -609,6 +668,7 @@ run_destroy() {
   set_ecr_repository_mode
   terraform_destroy
   delete_shared_state_bucket_if_requested "${EFFECTIVE_TF_STATE_BUCKET}"
+  rm -f "${LOCAL_DESTROY_STATE_MARKER}"
 }
 
 normalize_optional_envs
@@ -619,7 +679,6 @@ require_non_empty "${AWS_REGION}" "AWS_REGION"
 require_non_empty "${EKS_CLUSTER_NAME}" "EKS_CLUSTER_NAME"
 
 if [[ "${TERRAFORM_ACTION}" == "apply" ]]; then
-  require_non_empty "${TF_VAR_kubernetes_version:-}" "TF_VAR_kubernetes_version"
   set_eks_role_defaults
 elif [[ "${TERRAFORM_ACTION}" == "destroy" && -z "${TERRAFORM_DESTROY_TARGETS:-}" ]]; then
   set_eks_role_defaults

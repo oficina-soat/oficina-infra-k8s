@@ -9,15 +9,15 @@ prefix_rule(pattern = ["terraform", "-chdir=terraform/environments/lab", "provid
 prefix_rule(pattern = ["kubectl", "kustomize", "k8s/overlays/lab"], decision = "allow")
 
 # Scripts locais de validacao e operacao
-prefix_rule(pattern = ["bash", "-n", "scripts/deploy-manual.sh"], decision = "allow")
-prefix_rule(pattern = ["bash", "-n", "scripts/cleanup-orphan-eks.sh"], decision = "allow")
-prefix_rule(pattern = ["bash", "-n", "scripts/start-port-forwards.sh"], decision = "allow")
-prefix_rule(pattern = ["bash", "-n", "scripts/ci-deploy.sh"], decision = "allow")
-prefix_rule(pattern = ["bash", "-n", "scripts/ci-terraform.sh"], decision = "allow")
-prefix_rule(pattern = ["./scripts/deploy-manual.sh"], decision = "allow")
-prefix_rule(pattern = ["./scripts/start-port-forwards.sh"], decision = "allow")
-prefix_rule(pattern = ["bash", "./scripts/ci-deploy.sh"], decision = "allow")
-prefix_rule(pattern = ["bash", "./scripts/ci-terraform.sh"], decision = "allow")
+prefix_rule(pattern = ["bash", "-n", "scripts/manual/deploy-manual.sh"], decision = "allow")
+prefix_rule(pattern = ["bash", "-n", "scripts/manual/cleanup-orphan-eks.sh"], decision = "allow")
+prefix_rule(pattern = ["bash", "-n", "scripts/manual/start-port-forwards.sh"], decision = "allow")
+prefix_rule(pattern = ["bash", "-n", "scripts/actions/ci-deploy.sh"], decision = "allow")
+prefix_rule(pattern = ["bash", "-n", "scripts/actions/ci-terraform.sh"], decision = "allow")
+prefix_rule(pattern = ["./scripts/manual/deploy-manual.sh"], decision = "allow")
+prefix_rule(pattern = ["./scripts/manual/start-port-forwards.sh"], decision = "allow")
+prefix_rule(pattern = ["bash", "./scripts/actions/ci-deploy.sh"], decision = "allow")
+prefix_rule(pattern = ["bash", "./scripts/actions/ci-terraform.sh"], decision = "allow")
 
 # Git
 prefix_rule(pattern = ["git", "status"], decision = "allow")

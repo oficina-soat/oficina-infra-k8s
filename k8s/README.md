@@ -4,7 +4,6 @@ Estrutura recomendada para este repositório:
 
 - `base/`: manifests reutilizáveis da aplicação
 - `components/`: recursos adicionais compostos para o laboratório
-- `addons/`: recursos opcionais e independentes
 - `overlays/`: pontos de entrada por ambiente
 
 ## Laboratório
@@ -13,7 +12,6 @@ Os pontos de entrada do laboratório são:
 
 - `k8s/base/oficina-app/`: `Deployment` e `Service` da aplicação
 - `k8s/components/mailhog/`: componente de e-mail usado no laboratório
-- `k8s/addons/keycloak/`: addon opcional para demonstração
 - `k8s/overlays/lab-platform/`: componentes de cluster gerenciados por este repositório, sem o `oficina-app`
 - `k8s/overlays/lab-app/`: `Deployment`, `Service` e `ConfigMap` do `oficina-app`
 - `k8s/overlays/lab/`: composição final do ambiente para renderização e validação integrada

@@ -3,14 +3,15 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+
+source "${SCRIPT_DIR}/../lib/common.sh"
 
 AWS_REGION="${AWS_REGION:-us-east-1}"
 EKS_CLUSTER_NAME="${EKS_CLUSTER_NAME:-}"
 UPDATE_KUBECONFIG="${UPDATE_KUBECONFIG:-false}"
 IMAGE_REF="${IMAGE_REF:-}"
-DEPLOY_APP="${DEPLOY_APP:-true}"
-DEPLOY_KEYCLOAK="${DEPLOY_KEYCLOAK:-false}"
+DEPLOY_APP="${DEPLOY_APP:-auto}"
 REGENERATE_JWT="${REGENERATE_JWT:-false}"
 JWT_DIR="${JWT_DIR:-.tmp/jwt}"
 OFICINA_AUTH_ISSUER="${OFICINA_AUTH_ISSUER:-oficina-api}"
@@ -19,15 +20,15 @@ OFICINA_AUTH_FORCE_LEGACY="${OFICINA_AUTH_FORCE_LEGACY:-false}"
 API_GATEWAY_ID="${API_GATEWAY_ID:-}"
 API_GATEWAY_NAME="${API_GATEWAY_NAME:-${EKS_CLUSTER_NAME:+${EKS_CLUSTER_NAME}-http-api}}"
 OBSERVABILITY_ENABLED="${OBSERVABILITY_ENABLED:-true}"
-OBSERVABILITY_APP_LOG_GROUP_NAME="${OBSERVABILITY_APP_LOG_GROUP_NAME:-/oficina/lab/eks/oficina-app}"
-OBSERVABILITY_PROMETHEUS_LOG_GROUP_NAME="${OBSERVABILITY_PROMETHEUS_LOG_GROUP_NAME:-${EKS_CLUSTER_NAME:+/aws/containerinsights/${EKS_CLUSTER_NAME}/prometheus}}"
+OBSERVABILITY_APP_LOG_GROUP_NAME="${OFICINA_OBSERVABILITY_APP_LOG_GROUP_NAME}"
+OBSERVABILITY_PROMETHEUS_LOG_GROUP_NAME="${EKS_CLUSTER_NAME:+/aws/containerinsights/${EKS_CLUSTER_NAME}/prometheus}"
 OBSERVABILITY_ENABLE_K8S_RESOURCE_METRICS="${OBSERVABILITY_ENABLE_K8S_RESOURCE_METRICS:-true}"
-OBSERVABILITY_FLUENT_BIT_IMAGE="${OBSERVABILITY_FLUENT_BIT_IMAGE:-public.ecr.aws/aws-observability/aws-for-fluent-bit:2.34.3.20260423}"
-OBSERVABILITY_CWAGENT_IMAGE="${OBSERVABILITY_CWAGENT_IMAGE:-public.ecr.aws/cloudwatch-agent/cloudwatch-agent:1.300066.1}"
-DB_SECRET_NAME="oficina-database-env"
+OBSERVABILITY_FLUENT_BIT_IMAGE="public.ecr.aws/aws-observability/aws-for-fluent-bit:2.34.3.20260423"
+OBSERVABILITY_CWAGENT_IMAGE="public.ecr.aws/cloudwatch-agent/cloudwatch-agent:1.300066.1"
+DB_SECRET_NAME="${DB_SECRET_NAME:-${OFICINA_DB_K8S_SECRET_NAME}}"
 APP_NAMESPACE="default"
-PLATFORM_ENV_DIR="k8s/overlays/lab-platform"
-APP_ENV_DIR="k8s/overlays/lab-app"
+PLATFORM_ENV_DIR="${PLATFORM_ENV_DIR:-${OFICINA_PLATFORM_OVERLAY_DIR}}"
+APP_ENV_DIR="${APP_ENV_DIR:-${OFICINA_APP_OVERLAY_DIR}}"
 
 usage() {
   cat <<EOF
@@ -35,12 +36,10 @@ Uso:
   $(basename "$0")
 
 Variaveis suportadas:
-  IMAGE_REF              Imagem da aplicacao. Obrigatoria se DEPLOY_APP=true
+  IMAGE_REF              Imagem da aplicacao. Quando ausente, aplica somente a plataforma
   UPDATE_KUBECONFIG      true|false. Default: false
   EKS_CLUSTER_NAME       Obrigatoria para renderizar os overlays do laboratorio
   AWS_REGION             Regiao AWS. Default: us-east-1
-  DEPLOY_APP             true|false. Default: true
-  DEPLOY_KEYCLOAK        true|false. Default: false
   REGENERATE_JWT         true|false. Default: false; chaves ausentes em JWT_DIR ainda sao geradas
   JWT_DIR                Diretorio das chaves JWT. Default: .tmp/jwt
   OFICINA_AUTH_ISSUER    Issuer esperado pela aplicacao. Default: oficina-api
@@ -49,43 +48,8 @@ Variaveis suportadas:
   API_GATEWAY_ID         Opcional; ID do HTTP API usado para descobrir o issuer publico
   API_GATEWAY_NAME       Opcional; default <EKS_CLUSTER_NAME>-http-api
   OBSERVABILITY_ENABLED                    true|false. Default: true
-  OBSERVABILITY_APP_LOG_GROUP_NAME         Default: /oficina/lab/eks/oficina-app
-  OBSERVABILITY_PROMETHEUS_LOG_GROUP_NAME  Default: /aws/containerinsights/<EKS_CLUSTER_NAME>/prometheus
   OBSERVABILITY_ENABLE_K8S_RESOURCE_METRICS true|false. Default: true
-  OBSERVABILITY_FLUENT_BIT_IMAGE           Imagem fixa do AWS for Fluent Bit
-  OBSERVABILITY_CWAGENT_IMAGE              Imagem fixa do CloudWatch agent
 EOF
-}
-
-require_cmd() {
-  if ! command -v "$1" >/dev/null 2>&1; then
-    echo "Comando obrigatorio nao encontrado: $1" >&2
-    exit 1
-  fi
-}
-
-require_non_empty() {
-  local value="$1"
-  local name="$2"
-  if [[ -z "${value}" ]]; then
-    echo "Variavel obrigatoria ausente: ${name}" >&2
-    exit 1
-  fi
-}
-
-is_truthy() {
-  case "${1:-}" in
-    true | TRUE | True | 1 | yes | YES | Yes)
-      return 0
-      ;;
-    *)
-      return 1
-      ;;
-  esac
-}
-
-log() {
-  printf '\n[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
 }
 
 normalize_url_like_value() {
@@ -166,18 +130,18 @@ secret_exists() {
 }
 
 show_app_diagnostics() {
-  log "Diagnostico do deployment oficina-app"
-  kubectl get deployment/oficina-app service/oficina-app \
+  log "Diagnostico do deployment ${OFICINA_APP_NAME}"
+  kubectl get "deployment/${OFICINA_APP_NAME}" "service/${OFICINA_APP_NAME}" \
     --namespace "${APP_NAMESPACE}" \
     --output wide || true
   kubectl get pods \
     --namespace "${APP_NAMESPACE}" \
-    --selector app.kubernetes.io/name=oficina-app \
+    --selector "app.kubernetes.io/name=${OFICINA_APP_NAME}" \
     --output wide || true
-  kubectl describe deployment/oficina-app --namespace "${APP_NAMESPACE}" || true
+  kubectl describe "deployment/${OFICINA_APP_NAME}" --namespace "${APP_NAMESPACE}" || true
   kubectl logs \
     --namespace "${APP_NAMESPACE}" \
-    --selector app.kubernetes.io/name=oficina-app \
+    --selector "app.kubernetes.io/name=${OFICINA_APP_NAME}" \
     --tail=120 \
     --all-containers=true || true
 }
@@ -186,13 +150,13 @@ verify_app_service_endpoints() {
   local endpoint_ips=""
 
   endpoint_ips="$(
-    kubectl get endpoints oficina-app \
+    kubectl get endpoints "${OFICINA_APP_NAME}" \
       --namespace "${APP_NAMESPACE}" \
       -o jsonpath='{.subsets[*].addresses[*].ip}' 2>/dev/null || true
   )"
 
   if [[ -z "${endpoint_ips}" ]]; then
-    echo "Service oficina-app nao possui endpoints prontos apos o rollout." >&2
+    echo "Service ${OFICINA_APP_NAME} nao possui endpoints prontos apos o rollout." >&2
     show_app_diagnostics
     exit 1
   fi
@@ -259,6 +223,22 @@ require_cmd sed
 prepare_auth_config
 require_non_empty "${EKS_CLUSTER_NAME}" "EKS_CLUSTER_NAME"
 
+case "${DEPLOY_APP}" in
+  auto)
+    if [[ -n "${IMAGE_REF}" ]]; then
+      DEPLOY_APP="true"
+    else
+      DEPLOY_APP="false"
+    fi
+    ;;
+  true | false)
+    ;;
+  *)
+    echo "DEPLOY_APP invalido: ${DEPLOY_APP}. Use auto, true ou false." >&2
+    exit 1
+    ;;
+esac
+
 if [[ "${UPDATE_KUBECONFIG}" == "true" ]]; then
   require_cmd aws
 fi
@@ -281,7 +261,6 @@ APP_NAMESPACE=${APP_NAMESPACE}
 PLATFORM_ENV_DIR=${PLATFORM_ENV_DIR}
 APP_ENV_DIR=${APP_ENV_DIR}
 DEPLOY_APP=${DEPLOY_APP}
-DEPLOY_KEYCLOAK=${DEPLOY_KEYCLOAK}
 REGENERATE_JWT=${REGENERATE_JWT}
 JWT_DIR=${JWT_DIR}
 OFICINA_AUTH_ISSUER=${OFICINA_AUTH_ISSUER}
@@ -325,8 +304,8 @@ if [[ "${DEPLOY_APP}" == "true" ]]; then
     exit 1
   fi
 
-  log "Aplicando secret oficina-jwt-keys"
-  kubectl create secret generic oficina-jwt-keys \
+  log "Aplicando secret ${OFICINA_JWT_K8S_SECRET_NAME}"
+  kubectl create secret generic "${OFICINA_JWT_K8S_SECRET_NAME}" \
     --from-file=privateKey.pem="${JWT_DIR}/privateKey.pem" \
     --from-file=publicKey.pem="${JWT_DIR}/publicKey.pem" \
     --namespace "${APP_NAMESPACE}" \
@@ -335,10 +314,10 @@ if [[ "${DEPLOY_APP}" == "true" ]]; then
   log "Aplicando ambiente de laboratorio da aplicacao"
   render_app_overlay | kubectl apply -f -
 
-  log "Reiniciando deployment oficina-app para aplicar secrets/configmaps atualizados"
-  kubectl rollout restart deployment/oficina-app --namespace "${APP_NAMESPACE}"
+  log "Reiniciando deployment ${OFICINA_APP_NAME} para aplicar secrets/configmaps atualizados"
+  kubectl rollout restart "deployment/${OFICINA_APP_NAME}" --namespace "${APP_NAMESPACE}"
 
-  if ! kubectl rollout status deployment/oficina-app --namespace "${APP_NAMESPACE}" --timeout=300s; then
+  if ! kubectl rollout status "deployment/${OFICINA_APP_NAME}" --namespace "${APP_NAMESPACE}" --timeout=300s; then
     show_app_diagnostics
     exit 1
   fi
@@ -346,11 +325,5 @@ if [[ "${DEPLOY_APP}" == "true" ]]; then
   verify_app_service_endpoints
 fi
 
-if [[ "${DEPLOY_KEYCLOAK}" == "true" ]]; then
-  log "Aplicando manifests do Keycloak"
-  kubectl apply -k k8s/addons/keycloak
-  kubectl rollout status deployment/keycloak --namespace keycloak --timeout=180s
-fi
-
 log "Deploy concluido"
-log "Para acesso local, execute: ${REPO_ROOT}/scripts/start-port-forwards.sh"
+log "Para acesso local, execute: ${REPO_ROOT}/scripts/manual/start-port-forwards.sh"

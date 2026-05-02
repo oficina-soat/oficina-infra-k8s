@@ -3,26 +3,27 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
-TERRAFORM_DIR="${TERRAFORM_DIR:-${REPO_ROOT}/terraform/environments/lab}"
+source "${SCRIPT_DIR}/../lib/common.sh"
+
+TERRAFORM_DIR="${TERRAFORM_DIR:-${OFICINA_TERRAFORM_ENV_DIR}}"
 AWS_REGION="${AWS_REGION:-}"
 EKS_CLUSTER_NAME="${EKS_CLUSTER_NAME:-}"
 IMAGE_REF="${IMAGE_REF:-}"
 IMAGE_TAG="${IMAGE_TAG:-}"
 TF_STATE_BUCKET="${TF_STATE_BUCKET:-}"
-TF_STATE_KEY="${TF_STATE_KEY:-oficina/lab/terraform.tfstate}"
+TF_STATE_KEY="${TF_STATE_KEY:-${OFICINA_TF_STATE_KEY}}"
 TF_STATE_REGION="${TF_STATE_REGION:-${AWS_REGION}}"
 TF_STATE_DYNAMODB_TABLE="${TF_STATE_DYNAMODB_TABLE:-}"
 K8S_DATABASE_ENV_FILE="${K8S_DATABASE_ENV_FILE:-}"
-K8S_DATABASE_SECRET_ID="${K8S_DATABASE_SECRET_ID:-oficina/lab/database/app}"
-K8S_JWT_SECRET_ID="${K8S_JWT_SECRET_ID:-oficina/lab/jwt}"
-K8S_JWT_SECRET_PRIVATE_KEY_FIELD="${K8S_JWT_SECRET_PRIVATE_KEY_FIELD:-privateKeyPem}"
-K8S_JWT_SECRET_PUBLIC_KEY_FIELD="${K8S_JWT_SECRET_PUBLIC_KEY_FIELD:-publicKeyPem}"
+K8S_DATABASE_SECRET_ID="${K8S_DATABASE_SECRET_ID:-${OFICINA_DB_APP_SECRET_ID}}"
+K8S_JWT_SECRET_ID="${K8S_JWT_SECRET_ID:-${OFICINA_JWT_SECRET_ID}}"
+K8S_JWT_SECRET_PRIVATE_KEY_FIELD="privateKeyPem"
+K8S_JWT_SECRET_PUBLIC_KEY_FIELD="publicKeyPem"
 K8S_JWT_SECRET_KMS_KEY_ID="${K8S_JWT_SECRET_KMS_KEY_ID:-}"
 FETCH_RUNTIME_SECRETS_FROM_AWS="${FETCH_RUNTIME_SECRETS_FROM_AWS:-true}"
-DEPLOY_APP="${DEPLOY_APP:-auto}"
-DEPLOY_KEYCLOAK="${DEPLOY_KEYCLOAK:-false}"
+DEPLOY_APP="auto"
 REGENERATE_JWT="${REGENERATE_JWT:-false}"
 ROTATE_JWT_SECRET="${ROTATE_JWT_SECRET:-false}"
 OFICINA_AUTH_ISSUER="${OFICINA_AUTH_ISSUER:-}"
@@ -48,60 +49,17 @@ cleanup() {
 
 trap cleanup EXIT
 
-log() {
-  printf '\n[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
-}
-
-require_cmd() {
-  if ! command -v "$1" >/dev/null 2>&1; then
-    echo "Comando obrigatorio nao encontrado: $1" >&2
-    exit 1
-  fi
-}
-
-require_non_empty() {
-  local value="$1"
-  local name="$2"
-
-  if [[ -z "${value}" ]]; then
-    echo "Variavel obrigatoria ausente: ${name}" >&2
-    exit 1
-  fi
-}
-
-unset_if_empty() {
-  local name="$1"
-
-  if [[ -v "${name}" && -z "${!name}" ]]; then
-    unset "${name}"
-  fi
-}
-
 normalize_optional_envs() {
-  unset_if_empty "DEPLOY_APP"
   unset_if_empty "IMAGE_REF"
   unset_if_empty "IMAGE_TAG"
   unset_if_empty "K8S_DATABASE_ENV_FILE"
   unset_if_empty "K8S_DATABASE_SECRET_ID"
   unset_if_empty "K8S_JWT_SECRET_ID"
-  unset_if_empty "K8S_JWT_SECRET_PRIVATE_KEY_FIELD"
-  unset_if_empty "K8S_JWT_SECRET_PUBLIC_KEY_FIELD"
   unset_if_empty "K8S_JWT_SECRET_KMS_KEY_ID"
   unset_if_empty "ROTATE_JWT_SECRET"
   unset_if_empty "OFICINA_AUTH_ISSUER"
   unset_if_empty "OFICINA_AUTH_JWKS_URI"
   unset_if_empty "OFICINA_AUTH_FORCE_LEGACY"
-}
-
-is_truthy() {
-  case "${1:-}" in
-    true | TRUE | True | 1 | yes | YES | Yes)
-      return 0
-      ;;
-    *)
-      return 1
-      ;;
-  esac
 }
 
 generate_jwt_keypair() {
@@ -164,8 +122,6 @@ create_or_rotate_jwt_secret_in_secrets_manager() {
 
   require_cmd jq
   require_non_empty "${K8S_JWT_SECRET_ID}" "K8S_JWT_SECRET_ID"
-  require_non_empty "${K8S_JWT_SECRET_PRIVATE_KEY_FIELD}" "K8S_JWT_SECRET_PRIVATE_KEY_FIELD"
-  require_non_empty "${K8S_JWT_SECRET_PUBLIC_KEY_FIELD}" "K8S_JWT_SECRET_PUBLIC_KEY_FIELD"
 
   tmp_dir="$(mktemp -d)"
   secret_json_file="${tmp_dir}/jwt-secret.json"
@@ -193,13 +149,13 @@ create_or_rotate_jwt_secret_in_secrets_manager() {
         --region "${AWS_REGION}" \
         --name "${K8S_JWT_SECRET_ID}" \
         --kms-key-id "${K8S_JWT_SECRET_KMS_KEY_ID}" \
-        --description "Chaves JWT compartilhadas da Oficina no ambiente lab" \
+        --description "Chaves JWT compartilhadas da Oficina no ambiente ${OFICINA_ENVIRONMENT_NAME}" \
         --secret-string "file://${secret_json_file}" >/dev/null
     else
       aws secretsmanager create-secret \
         --region "${AWS_REGION}" \
         --name "${K8S_JWT_SECRET_ID}" \
-        --description "Chaves JWT compartilhadas da Oficina no ambiente lab" \
+        --description "Chaves JWT compartilhadas da Oficina no ambiente ${OFICINA_ENVIRONMENT_NAME}" \
         --secret-string "file://${secret_json_file}" >/dev/null
     fi
   fi
@@ -408,7 +364,7 @@ apply_database_secret_from_file() {
   ensure_database_quarkus_envs "${env_file}"
   ensure_database_ssl_envs "${env_file}"
 
-  kubectl create secret generic oficina-database-env \
+  kubectl create secret generic "${OFICINA_DB_K8S_SECRET_NAME}" \
     --namespace default \
     --from-env-file="${env_file}" \
     --dry-run=client -o yaml | kubectl apply -f -
@@ -420,18 +376,18 @@ prepare_database_secret() {
   if [[ -n "${K8S_DATABASE_ENV_FILE:-}" ]]; then
     db_env_file="$(mktemp)"
     printf '%s' "${K8S_DATABASE_ENV_FILE:-}" > "${db_env_file}"
-    log "Criando/atualizando secret Kubernetes oficina-database-env a partir de K8S_DATABASE_ENV_FILE."
+    log "Criando/atualizando secret Kubernetes ${OFICINA_DB_K8S_SECRET_NAME} a partir de K8S_DATABASE_ENV_FILE."
     apply_database_secret_from_file "${db_env_file}"
     return
   fi
 
   if ! is_truthy "${FETCH_RUNTIME_SECRETS_FROM_AWS}"; then
-    log "Busca de runtime secrets na AWS desabilitada; nao criarei oficina-database-env automaticamente."
+    log "Busca de runtime secrets na AWS desabilitada; nao criarei ${OFICINA_DB_K8S_SECRET_NAME} automaticamente."
     return
   fi
 
   if [[ -z "${K8S_DATABASE_SECRET_ID:-}" ]]; then
-    log "K8S_DATABASE_SECRET_ID ausente; nao criarei oficina-database-env automaticamente."
+    log "K8S_DATABASE_SECRET_ID ausente; nao criarei ${OFICINA_DB_K8S_SECRET_NAME} automaticamente."
     return
   fi
 
@@ -451,7 +407,7 @@ prepare_database_secret() {
   write_secret_string_as_env_file "${secret_string_file}" "${db_env_file}"
   rm -f "${secret_string_file}"
 
-  log "Criando/atualizando secret Kubernetes oficina-database-env a partir do Secrets Manager ${K8S_DATABASE_SECRET_ID}."
+  log "Criando/atualizando secret Kubernetes ${OFICINA_DB_K8S_SECRET_NAME} a partir do Secrets Manager ${K8S_DATABASE_SECRET_ID}."
   apply_database_secret_from_file "${db_env_file}"
 }
 
@@ -624,11 +580,8 @@ resolve_image_ref() {
 }
 
 normalize_optional_envs
-DEPLOY_APP="${DEPLOY_APP:-auto}"
-K8S_DATABASE_SECRET_ID="${K8S_DATABASE_SECRET_ID:-oficina/lab/database/app}"
-K8S_JWT_SECRET_ID="${K8S_JWT_SECRET_ID:-oficina/lab/jwt}"
-K8S_JWT_SECRET_PRIVATE_KEY_FIELD="${K8S_JWT_SECRET_PRIVATE_KEY_FIELD:-privateKeyPem}"
-K8S_JWT_SECRET_PUBLIC_KEY_FIELD="${K8S_JWT_SECRET_PUBLIC_KEY_FIELD:-publicKeyPem}"
+K8S_DATABASE_SECRET_ID="${K8S_DATABASE_SECRET_ID:-${OFICINA_DB_APP_SECRET_ID}}"
+K8S_JWT_SECRET_ID="${K8S_JWT_SECRET_ID:-${OFICINA_JWT_SECRET_ID}}"
 K8S_JWT_SECRET_KMS_KEY_ID="${K8S_JWT_SECRET_KMS_KEY_ID:-}"
 FETCH_RUNTIME_SECRETS_FROM_AWS="${FETCH_RUNTIME_SECRETS_FROM_AWS:-true}"
 ROTATE_JWT_SECRET="${ROTATE_JWT_SECRET:-false}"
@@ -639,7 +592,6 @@ require_cmd kubectl
 require_cmd terraform
 require_non_empty "${AWS_REGION}" "AWS_REGION"
 require_non_empty "${EKS_CLUSTER_NAME}" "EKS_CLUSTER_NAME"
-require_non_empty "${TF_VAR_kubernetes_version:-}" "TF_VAR_kubernetes_version"
 
 if should_evaluate_app_deploy && [[ -z "${IMAGE_REF:-}" ]]; then
   ecr_repository_url_file="$(mktemp)"
@@ -647,7 +599,7 @@ fi
 
 TERRAFORM_ECR_REPOSITORY_URL_FILE="${ecr_repository_url_file:-}" \
 TERRAFORM_ACTION=apply \
-bash "${REPO_ROOT}/scripts/ci-terraform.sh"
+bash "${REPO_ROOT}/scripts/actions/ci-terraform.sh"
 
 if should_evaluate_app_deploy; then
   if resolve_image_ref; then
@@ -672,15 +624,10 @@ AWS_REGION="${AWS_REGION}" \
 EKS_CLUSTER_NAME="${EKS_CLUSTER_NAME}" \
 UPDATE_KUBECONFIG=false \
 DEPLOY_APP="${DEPLOY_APP}" \
-DEPLOY_KEYCLOAK="${DEPLOY_KEYCLOAK}" \
 REGENERATE_JWT="${REGENERATE_JWT}" \
 OFICINA_AUTH_ISSUER="${OFICINA_AUTH_ISSUER:-}" \
 OFICINA_AUTH_JWKS_URI="${OFICINA_AUTH_JWKS_URI:-}" \
 OFICINA_AUTH_FORCE_LEGACY="${OFICINA_AUTH_FORCE_LEGACY:-false}" \
 OBSERVABILITY_ENABLED="${OBSERVABILITY_ENABLED:-true}" \
-OBSERVABILITY_APP_LOG_GROUP_NAME="${OBSERVABILITY_APP_LOG_GROUP_NAME:-/oficina/lab/eks/oficina-app}" \
-OBSERVABILITY_PROMETHEUS_LOG_GROUP_NAME="${OBSERVABILITY_PROMETHEUS_LOG_GROUP_NAME:-/aws/containerinsights/${EKS_CLUSTER_NAME}/prometheus}" \
 OBSERVABILITY_ENABLE_K8S_RESOURCE_METRICS="${OBSERVABILITY_ENABLE_K8S_RESOURCE_METRICS:-true}" \
-OBSERVABILITY_FLUENT_BIT_IMAGE="${OBSERVABILITY_FLUENT_BIT_IMAGE:-public.ecr.aws/aws-observability/aws-for-fluent-bit:2.34.3.20260423}" \
-OBSERVABILITY_CWAGENT_IMAGE="${OBSERVABILITY_CWAGENT_IMAGE:-public.ecr.aws/cloudwatch-agent/cloudwatch-agent:1.300066.1}" \
-bash "${REPO_ROOT}/scripts/deploy-manual.sh"
+bash "${REPO_ROOT}/scripts/manual/deploy-manual.sh"

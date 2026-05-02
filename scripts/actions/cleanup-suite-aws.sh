@@ -2,18 +2,24 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+source "${SCRIPT_DIR}/../lib/common.sh"
+
 AWS_REGION="${AWS_REGION:-}"
 TF_STATE_BUCKET="${TF_STATE_BUCKET:-}"
-EKS_CLUSTER_NAME="${EKS_CLUSTER_NAME:-eks-lab}"
-DB_IDENTIFIER="${DB_IDENTIFIER:-oficina-postgres-lab}"
+EKS_CLUSTER_NAME="${EKS_CLUSTER_NAME:-${OFICINA_EKS_CLUSTER_NAME}}"
+DB_IDENTIFIER="${DB_IDENTIFIER:-${OFICINA_DB_IDENTIFIER}}"
+DB_PORT="${DB_PORT:-5432}"
 DB_PARAMETER_GROUP_NAME="${DB_PARAMETER_GROUP_NAME:-${DB_IDENTIFIER}-pg}"
 DB_SUBNET_GROUP_NAME="${DB_SUBNET_GROUP_NAME:-${DB_IDENTIFIER}-subnet-group}"
+DB_SECURITY_GROUP_NAME="${DB_SECURITY_GROUP_NAME:-${DB_IDENTIFIER}-sg}"
 DB_MONITORING_ROLE_NAME="${DB_MONITORING_ROLE_NAME:-${DB_IDENTIFIER}-rds-monitoring}"
-DB_APP_SECRET_NAME="${DB_APP_SECRET_NAME:-oficina/lab/database/app}"
-AUTH_DB_SECRET_NAME="${AUTH_DB_SECRET_NAME:-oficina/lab/database/auth-lambda}"
-JWT_SECRET_NAME="${JWT_SECRET_NAME:-oficina/lab/jwt}"
-AUTH_LAMBDA_FUNCTION_NAME="${AUTH_LAMBDA_FUNCTION_NAME:-oficina-auth-lambda-lab}"
-NOTIFICACAO_LAMBDA_FUNCTION_NAME="${NOTIFICACAO_LAMBDA_FUNCTION_NAME:-oficina-notificacao-lambda-lab}"
+DB_APP_SECRET_NAME="${DB_APP_SECRET_NAME:-${OFICINA_DB_APP_SECRET_ID}}"
+AUTH_DB_SECRET_NAME="${AUTH_DB_SECRET_NAME:-${OFICINA_AUTH_DB_SECRET_ID}}"
+JWT_SECRET_NAME="${JWT_SECRET_NAME:-${OFICINA_JWT_SECRET_ID}}"
+AUTH_LAMBDA_FUNCTION_NAME="${AUTH_LAMBDA_FUNCTION_NAME:-${OFICINA_AUTH_LAMBDA_FUNCTION_NAME}}"
+NOTIFICACAO_LAMBDA_FUNCTION_NAME="${NOTIFICACAO_LAMBDA_FUNCTION_NAME:-${OFICINA_NOTIFICACAO_LAMBDA_FUNCTION_NAME}}"
 AUTH_LAMBDA_LOG_GROUP_NAME="${AUTH_LAMBDA_LOG_GROUP_NAME:-/aws/lambda/${AUTH_LAMBDA_FUNCTION_NAME}}"
 AUTH_LAMBDA_LEGACY_LOG_GROUP_NAME="${AUTH_LAMBDA_LEGACY_LOG_GROUP_NAME:-/aws/lambda/OficinaAuthLambdaNative}"
 NOTIFICACAO_LAMBDA_LOG_GROUP_NAME="${NOTIFICACAO_LAMBDA_LOG_GROUP_NAME:-/aws/lambda/${NOTIFICACAO_LAMBDA_FUNCTION_NAME}}"
@@ -21,46 +27,17 @@ AUTH_LAMBDA_SECURITY_GROUP_NAME="${AUTH_LAMBDA_SECURITY_GROUP_NAME:-${AUTH_LAMBD
 NOTIFICACAO_LAMBDA_SECURITY_GROUP_NAME="${NOTIFICACAO_LAMBDA_SECURITY_GROUP_NAME:-${EKS_CLUSTER_NAME}-notificacao-lambda}"
 ECR_REPOSITORY_NAME="${ECR_REPOSITORY_NAME:-oficina}"
 LAMBDA_ARTIFACT_BUCKET="${LAMBDA_ARTIFACT_BUCKET:-${TF_STATE_BUCKET:-}}"
-AUTH_LAMBDA_ARTIFACT_PREFIX="${AUTH_LAMBDA_ARTIFACT_PREFIX:-oficina/lab/lambda/oficina-auth-lambda}"
-NOTIFICACAO_LAMBDA_ARTIFACT_PREFIX="${NOTIFICACAO_LAMBDA_ARTIFACT_PREFIX:-oficina/lab/lambda/oficina-notificacao-lambda}"
+AUTH_LAMBDA_ARTIFACT_PREFIX="${AUTH_LAMBDA_ARTIFACT_PREFIX:-${OFICINA_AUTH_LAMBDA_ARTIFACT_PREFIX}}"
+NOTIFICACAO_LAMBDA_ARTIFACT_PREFIX="${NOTIFICACAO_LAMBDA_ARTIFACT_PREFIX:-${OFICINA_NOTIFICACAO_LAMBDA_ARTIFACT_PREFIX}}"
 DELETE_RUNTIME_SECRETS="${DELETE_RUNTIME_SECRETS:-true}"
 DELETE_LAMBDA_ARTIFACT_OBJECTS="${DELETE_LAMBDA_ARTIFACT_OBJECTS:-false}"
+FAIL_ON_DEFERRED_SECURITY_GROUPS="${FAIL_ON_DEFERRED_SECURITY_GROUPS:-false}"
 SKIP_FINAL_DB_SNAPSHOT="${SKIP_FINAL_DB_SNAPSHOT:-true}"
 DB_FINAL_SNAPSHOT_IDENTIFIER="${DB_FINAL_SNAPSHOT_IDENTIFIER:-${DB_IDENTIFIER}-final-$(date '+%Y%m%d%H%M%S')}"
-NETWORK_INTERFACE_WAIT_SECONDS="${NETWORK_INTERFACE_WAIT_SECONDS:-600}"
+NETWORK_INTERFACE_WAIT_SECONDS="${NETWORK_INTERFACE_WAIT_SECONDS:-900}"
+FINAL_NETWORK_INTERFACE_WAIT_SECONDS="${FINAL_NETWORK_INTERFACE_WAIT_SECONDS:-1800}"
 NETWORK_INTERFACE_POLL_SECONDS="${NETWORK_INTERFACE_POLL_SECONDS:-15}"
-
-log() {
-  printf '\n[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
-}
-
-require_cmd() {
-  if ! command -v "$1" >/dev/null 2>&1; then
-    echo "Comando obrigatorio nao encontrado: $1" >&2
-    exit 1
-  fi
-}
-
-require_non_empty() {
-  local value="$1"
-  local name="$2"
-
-  if [[ -z "${value}" ]]; then
-    echo "Variavel obrigatoria ausente: ${name}" >&2
-    exit 1
-  fi
-}
-
-is_truthy() {
-  case "${1:-}" in
-    true | TRUE | True | 1 | yes | YES | Yes)
-      return 0
-      ;;
-    *)
-      return 1
-      ;;
-  esac
-}
+DEFERRED_SECURITY_GROUP_IDS=()
 
 trim_none() {
   if [[ "${1:-}" == "None" ]]; then
@@ -76,6 +53,52 @@ function_exists() {
   aws lambda get-function \
     --region "${AWS_REGION}" \
     --function-name "${function_name}" >/dev/null 2>&1
+}
+
+lambda_attached_to_vpc() {
+  local function_name="$1"
+  local vpc_id=""
+
+  vpc_id="$(
+    aws lambda get-function-configuration \
+      --region "${AWS_REGION}" \
+      --function-name "${function_name}" \
+      --query 'VpcConfig.VpcId' \
+      --output text 2>/dev/null || true
+  )"
+  vpc_id="$(trim_none "${vpc_id}")"
+
+  [[ -n "${vpc_id}" ]]
+}
+
+detach_lambda_from_vpc() {
+  local function_name="$1"
+  local output=""
+  local status=0
+
+  if ! function_exists "${function_name}" || ! lambda_attached_to_vpc "${function_name}"; then
+    return
+  fi
+
+  log "Removendo associacao VPC da Lambda ${function_name} para liberar ENIs"
+  set +e
+  output="$(
+    aws lambda update-function-configuration \
+      --region "${AWS_REGION}" \
+      --function-name "${function_name}" \
+      --vpc-config '{"SubnetIds":[],"SecurityGroupIds":[]}' 2>&1
+  )"
+  status=$?
+  set -e
+
+  if [[ ${status} -ne 0 ]]; then
+    log "Nao foi possivel remover a associacao VPC da Lambda ${function_name}; seguindo com delete-function: ${output}"
+    return
+  fi
+
+  aws lambda wait function-updated \
+    --region "${AWS_REGION}" \
+    --function-name "${function_name}" >/dev/null 2>&1 || true
 }
 
 db_exists() {
@@ -106,6 +129,39 @@ db_vpc_id() {
       --region "${AWS_REGION}" \
       --db-instance-identifier "${DB_IDENTIFIER}" \
       --query 'DBInstances[0].DBSubnetGroup.VpcId' \
+      --output text 2>/dev/null || true
+  )"
+
+  trim_none "${vpc_id}"
+}
+
+lab_vpc_id_by_name() {
+  local vpc_id=""
+
+  vpc_id="$(
+    aws ec2 describe-vpcs \
+      --region "${AWS_REGION}" \
+      --filters "Name=tag:Name,Values=${EKS_CLUSTER_NAME}-vpc" \
+      --query 'Vpcs[0].VpcId' \
+      --output text 2>/dev/null || true
+  )"
+
+  trim_none "${vpc_id}"
+}
+
+security_group_vpc_id() {
+  local security_group_id="$1"
+  local vpc_id=""
+
+  if [[ -z "${security_group_id}" ]]; then
+    return
+  fi
+
+  vpc_id="$(
+    aws ec2 describe-security-groups \
+      --region "${AWS_REGION}" \
+      --group-ids "${security_group_id}" \
+      --query 'SecurityGroups[0].VpcId' \
       --output text 2>/dev/null || true
   )"
 
@@ -174,6 +230,43 @@ resolve_security_group_id_by_name() {
   trim_none "${group_id}"
 }
 
+append_id_once() {
+  local current="$1"
+  local new_id="$2"
+
+  if [[ -z "${new_id}" || "${new_id}" == "None" ]]; then
+    printf '%s' "${current}"
+    return
+  fi
+
+  if grep -qw "${new_id}" <<<"${current}"; then
+    printf '%s' "${current}"
+    return
+  fi
+
+  if [[ -n "${current}" ]]; then
+    printf '%s %s' "${current}" "${new_id}"
+    return
+  fi
+
+  printf '%s' "${new_id}"
+}
+
+resolve_db_security_group_ids_for_vpc() {
+  local vpc_id="$1"
+  local ids=""
+  local by_name=""
+
+  ids="$(db_security_group_ids)"
+
+  if [[ -n "${vpc_id}" ]]; then
+    by_name="$(resolve_security_group_id_by_name "${DB_SECURITY_GROUP_NAME}" "${vpc_id}")"
+    ids="$(append_id_once "${ids}" "${by_name}")"
+  fi
+
+  trim_none "${ids}"
+}
+
 resolve_auth_lambda_security_group_id() {
   local group_id=""
   local vpc_id=""
@@ -209,6 +302,8 @@ delete_lambda_function() {
     log "Lambda ${function_name} nao encontrada; seguindo"
     return
   fi
+
+  detach_lambda_from_vpc "${function_name}"
 
   log "Removendo Lambda ${function_name}"
   aws lambda delete-function \
@@ -282,9 +377,20 @@ list_security_group_network_interfaces() {
     --output text 2>/dev/null || true
 }
 
+describe_security_group_network_interfaces() {
+  local security_group_id="$1"
+
+  aws ec2 describe-network-interfaces \
+    --region "${AWS_REGION}" \
+    --filters "Name=group-id,Values=${security_group_id}" \
+    --query 'NetworkInterfaces[].{id:NetworkInterfaceId,status:Status,type:InterfaceType,requesterManaged:RequesterManaged,requesterId:RequesterId,attachment:Attachment.Status,description:Description}' \
+    --output table 2>/dev/null || true
+}
+
 wait_for_security_group_release() {
   local security_group_id="$1"
-  local deadline=$((SECONDS + NETWORK_INTERFACE_WAIT_SECONDS))
+  local wait_seconds="${2:-${NETWORK_INTERFACE_WAIT_SECONDS}}"
+  local deadline=$((SECONDS + wait_seconds))
   local interface_ids=""
 
   while true; do
@@ -295,8 +401,9 @@ wait_for_security_group_release() {
     fi
 
     if (( SECONDS >= deadline )); then
-      echo "O security group ${security_group_id} ainda possui ENIs apos ${NETWORK_INTERFACE_WAIT_SECONDS}s: ${interface_ids}" >&2
-      exit 1
+      echo "O security group ${security_group_id} ainda possui ENIs apos ${wait_seconds}s: ${interface_ids}" >&2
+      describe_security_group_network_interfaces "${security_group_id}" >&2
+      return 1
     fi
 
     log "Aguardando liberacao de ENIs do security group ${security_group_id}: ${interface_ids}"
@@ -304,21 +411,85 @@ wait_for_security_group_release() {
   done
 }
 
-delete_security_group_if_released() {
+delete_security_group_now() {
+  local security_group_id="$1"
+  local wait_seconds="${2:-${NETWORK_INTERFACE_WAIT_SECONDS}}"
+  local output=""
+  local status=0
+
+  if [[ -z "${security_group_id}" ]]; then
+    return 0
+  fi
+
+  if ! wait_for_security_group_release "${security_group_id}" "${wait_seconds}"; then
+    return 1
+  fi
+
+  set +e
+  output="$(
+    aws ec2 delete-security-group \
+      --region "${AWS_REGION}" \
+      --group-id "${security_group_id}" 2>&1
+  )"
+  status=$?
+  set -e
+
+  if [[ ${status} -eq 0 ]]; then
+    log "Security group ${security_group_id} removido"
+    return 0
+  fi
+
+  if grep -q "InvalidGroup.NotFound" <<<"${output}"; then
+    log "Security group ${security_group_id} ja nao existe; seguindo"
+    return 0
+  fi
+
+  log "Security group ${security_group_id} mantido porque a AWS ainda reporta dependencia nele: ${output}"
+  return 1
+}
+
+defer_security_group_delete() {
   local security_group_id="$1"
 
   if [[ -z "${security_group_id}" ]]; then
     return
   fi
 
-  wait_for_security_group_release "${security_group_id}"
+  DEFERRED_SECURITY_GROUP_IDS+=("${security_group_id}")
+}
 
-  if aws ec2 delete-security-group --region "${AWS_REGION}" --group-id "${security_group_id}" >/dev/null 2>&1; then
-    log "Security group ${security_group_id} removido"
+delete_security_group_if_released() {
+  local security_group_id="$1"
+
+  if delete_security_group_now "${security_group_id}" "${NETWORK_INTERFACE_WAIT_SECONDS}"; then
     return
   fi
 
-  log "Security group ${security_group_id} mantido porque a AWS ainda reporta dependencia nele"
+  log "Security group ${security_group_id} sera tentado novamente no final do cleanup"
+  defer_security_group_delete "${security_group_id}"
+}
+
+cleanup_deferred_security_groups() {
+  local security_group_id=""
+  local failures=0
+
+  if [[ ${#DEFERRED_SECURITY_GROUP_IDS[@]} -eq 0 ]]; then
+    return
+  fi
+
+  log "Tentando novamente security groups pendentes apos o cleanup da suite"
+  for security_group_id in "${DEFERRED_SECURITY_GROUP_IDS[@]}"; do
+    if ! delete_security_group_now "${security_group_id}" "${FINAL_NETWORK_INTERFACE_WAIT_SECONDS}"; then
+      failures=$((failures + 1))
+    fi
+  done
+
+  if (( failures > 0 )); then
+    echo "Ainda existem ${failures} security groups com dependencias AWS apos o cleanup final. O destroy do Terraform deve prosseguir e o workflow tentara um novo cleanup se necessario." >&2
+    if is_truthy "${FAIL_ON_DEFERRED_SECURITY_GROUPS}"; then
+      exit 1
+    fi
+  fi
 }
 
 revoke_db_ingress_from_security_group() {
@@ -326,15 +497,20 @@ revoke_db_ingress_from_security_group() {
   local db_group_ids=""
   local target_port=""
   local db_group_id=""
+  local source_vpc_id=""
   local output=""
   local status=0
 
-  if [[ -z "${security_group_id}" ]] || ! db_exists; then
+  if [[ -z "${security_group_id}" ]]; then
     return
   fi
 
-  db_group_ids="$(db_security_group_ids)"
+  source_vpc_id="$(security_group_vpc_id "${security_group_id}")"
+  db_group_ids="$(resolve_db_security_group_ids_for_vpc "${source_vpc_id}")"
   target_port="$(db_port)"
+  if [[ -z "${target_port}" ]]; then
+    target_port="${DB_PORT}"
+  fi
 
   if [[ -z "${db_group_ids}" || -z "${target_port}" ]]; then
     return
@@ -557,9 +733,20 @@ delete_db_security_group_if_unused() {
 cleanup_database() {
   local db_sg_ids=""
   local db_master_secret=""
+  local db_vpc_id_before=""
+  local db_sg_id_by_name=""
 
   db_master_secret="$(db_master_secret_arn)"
   db_sg_ids="$(db_security_group_ids)"
+  db_vpc_id_before="$(db_vpc_id)"
+  if [[ -z "${db_vpc_id_before}" ]]; then
+    db_vpc_id_before="$(cluster_vpc_id)"
+  fi
+  if [[ -z "${db_vpc_id_before}" ]]; then
+    db_vpc_id_before="$(lab_vpc_id_by_name)"
+  fi
+  db_sg_id_by_name="$(resolve_security_group_id_by_name "${DB_SECURITY_GROUP_NAME}" "${db_vpc_id_before}")"
+  db_sg_ids="$(append_id_once "${db_sg_ids}" "${db_sg_id_by_name}")"
 
   if db_exists; then
     log "Desabilitando deletion protection da instancia ${DB_IDENTIFIER}"
@@ -641,5 +828,7 @@ if is_truthy "${DELETE_LAMBDA_ARTIFACT_OBJECTS}"; then
   delete_lambda_artifact_prefix "${AUTH_LAMBDA_ARTIFACT_PREFIX}"
   delete_lambda_artifact_prefix "${NOTIFICACAO_LAMBDA_ARTIFACT_PREFIX}"
 fi
+
+cleanup_deferred_security_groups
 
 log "Cleanup da suite AWS concluido"

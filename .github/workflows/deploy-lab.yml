@@ -42,7 +42,7 @@ jobs:
           kubectl kustomize k8s/overlays/lab-platform >/tmp/oficina-lab-platform-rendered.yaml
           kubectl kustomize k8s/overlays/lab-app >/tmp/oficina-lab-app-rendered.yaml
           kubectl kustomize k8s/overlays/lab >/tmp/oficina-lab-rendered.yaml
-          bash -n scripts/*.sh
+          find scripts -type f -name '*.sh' -print0 | xargs -0 bash -n
 
   deploy:
     needs: validate
@@ -61,10 +61,8 @@ jobs:
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
       EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME || 'eks-lab' }}
-      DEPLOY_APP: ${{ vars.DEPLOY_APP || 'false' }}
       IMAGE_REF: ${{ vars.IMAGE_REF }}
       IMAGE_TAG: ${{ vars.IMAGE_TAG }}
-      DEPLOY_KEYCLOAK: ${{ vars.DEPLOY_KEYCLOAK || 'false' }}
       REGENERATE_JWT: ${{ vars.REGENERATE_JWT || 'false' }}
       ROTATE_JWT_SECRET: ${{ vars.ROTATE_JWT_SECRET || 'false' }}
       OFICINA_AUTH_ISSUER: ${{ vars.OFICINA_AUTH_ISSUER }}
@@ -73,77 +71,35 @@ jobs:
       FETCH_RUNTIME_SECRETS_FROM_AWS: ${{ vars.FETCH_RUNTIME_SECRETS_FROM_AWS || 'true' }}
       K8S_DATABASE_SECRET_ID: ${{ vars.K8S_DATABASE_SECRET_ID || 'oficina/lab/database/app' }}
       K8S_JWT_SECRET_ID: ${{ vars.K8S_JWT_SECRET_ID || 'oficina/lab/jwt' }}
-      K8S_JWT_SECRET_PRIVATE_KEY_FIELD: ${{ vars.K8S_JWT_SECRET_PRIVATE_KEY_FIELD || 'privateKeyPem' }}
-      K8S_JWT_SECRET_PUBLIC_KEY_FIELD: ${{ vars.K8S_JWT_SECRET_PUBLIC_KEY_FIELD || 'publicKeyPem' }}
       K8S_JWT_SECRET_KMS_KEY_ID: ${{ vars.K8S_JWT_SECRET_KMS_KEY_ID }}
       TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
       TF_STATE_KEY: ${{ vars.TF_STATE_KEY || 'oficina/lab/terraform.tfstate' }}
       TF_STATE_REGION: ${{ vars.TF_STATE_REGION || vars.AWS_REGION || 'us-east-1' }}
       TF_STATE_DYNAMODB_TABLE: ${{ vars.TF_STATE_DYNAMODB_TABLE }}
-      TF_VAR_region: ${{ vars.AWS_REGION || 'us-east-1' }}
-      TF_VAR_cluster_name: ${{ vars.EKS_CLUSTER_NAME || 'eks-lab' }}
-      TF_VAR_kubernetes_version: ${{ vars.KUBERNETES_VERSION || '1.35' }}
       TF_VAR_eks_cluster_role_arn: ${{ vars.EKS_CLUSTER_ROLE_ARN }}
       TF_VAR_eks_node_role_arn: ${{ vars.EKS_NODE_ROLE_ARN }}
       TF_VAR_eks_access_principal_arn: ${{ vars.EKS_ACCESS_PRINCIPAL_ARN }}
-      TF_VAR_instance_type: ${{ vars.EKS_INSTANCE_TYPE || 't3.medium' }}
-      TF_VAR_node_capacity_type: ${{ vars.EKS_NODE_CAPACITY_TYPE || 'ON_DEMAND' }}
-      TF_VAR_node_ami_type: ${{ vars.EKS_NODE_AMI_TYPE || 'AL2023_x86_64_STANDARD' }}
-      TF_VAR_desired_size: ${{ vars.EKS_DESIRED_SIZE || '1' }}
-      TF_VAR_min_size: ${{ vars.EKS_MIN_SIZE || '1' }}
-      TF_VAR_max_size: ${{ vars.EKS_MAX_SIZE || '1' }}
       TF_VAR_azs: ${{ vars.EKS_AZS }}
       TF_VAR_public_subnet_cidrs: ${{ vars.EKS_PUBLIC_SUBNET_CIDRS }}
       TF_VAR_cluster_endpoint_public_access_cidrs: ${{ vars.EKS_CLUSTER_ENDPOINT_PUBLIC_ACCESS_CIDRS }}
       TF_VAR_ecr_repository_name: ${{ vars.ECR_REPOSITORY_NAME || 'oficina' }}
-      TF_VAR_create_ecr_repository: ${{ vars.CREATE_ECR_REPOSITORY || 'true' }}
-      TF_VAR_create_api_gateway: ${{ vars.CREATE_API_GATEWAY || 'true' }}
       TF_VAR_api_gateway_name: ${{ vars.API_GATEWAY_NAME }}
-      TF_VAR_api_gateway_stage_name: ${{ vars.API_GATEWAY_STAGE_NAME || '$default' }}
-      TF_VAR_api_gateway_enable_access_logs: ${{ vars.API_GATEWAY_ENABLE_ACCESS_LOGS || 'true' }}
-      TF_VAR_api_gateway_access_log_retention_in_days: ${{ vars.API_GATEWAY_ACCESS_LOG_RETENTION_IN_DAYS || '14' }}
-      TF_VAR_api_gateway_default_route_throttling_burst_limit: ${{ vars.API_GATEWAY_DEFAULT_ROUTE_THROTTLING_BURST_LIMIT || '50' }}
-      TF_VAR_api_gateway_default_route_throttling_rate_limit: ${{ vars.API_GATEWAY_DEFAULT_ROUTE_THROTTLING_RATE_LIMIT || '25' }}
       TF_VAR_api_gateway_vpc_link_subnet_ids: ${{ vars.API_GATEWAY_VPC_LINK_SUBNET_IDS }}
       TF_VAR_api_gateway_vpc_link_security_group_ids: ${{ vars.API_GATEWAY_VPC_LINK_SECURITY_GROUP_IDS }}
-      TF_VAR_api_gateway_create_vpc_link_security_group: ${{ vars.API_GATEWAY_CREATE_VPC_LINK_SECURITY_GROUP || 'true' }}
       TF_VAR_oficina_app_api_gateway_jwt_authorizer_enabled: ${{ vars.OFICINA_APP_API_GATEWAY_JWT_AUTHORIZER_ENABLED || 'false' }}
       TF_VAR_oficina_app_api_gateway_jwt_issuer: ${{ vars.OFICINA_APP_API_GATEWAY_JWT_ISSUER }}
-      TF_VAR_oficina_app_api_gateway_jwt_audience: ${{ vars.OFICINA_APP_API_GATEWAY_JWT_AUDIENCE || '["oficina-app"]' }}
-      TF_VAR_oficina_app_api_gateway_jwt_scopes: ${{ vars.OFICINA_APP_API_GATEWAY_JWT_SCOPES || '["oficina-app"]' }}
       TF_VAR_expose_mailhog_smtp_private_nlb: ${{ vars.EXPOSE_MAILHOG_SMTP_PRIVATE_NLB || 'true' }}
-      TF_VAR_mailhog_smtp_node_port: ${{ vars.MAILHOG_SMTP_NODE_PORT || '31025' }}
-      TF_VAR_mailhog_smtp_private_listener_port: ${{ vars.MAILHOG_SMTP_PRIVATE_LISTENER_PORT || '1025' }}
       TF_VAR_notificacao_lambda_security_group_name: ${{ vars.NOTIFICACAO_LAMBDA_SECURITY_GROUP_NAME }}
       TF_VAR_api_gateway_http_routes: ${{ vars.API_GATEWAY_HTTP_ROUTES }}
       TF_VAR_api_gateway_jwt_authorizers: ${{ vars.API_GATEWAY_JWT_AUTHORIZERS }}
       TF_VAR_api_gateway_lambda_routes: ${{ vars.API_GATEWAY_LAMBDA_ROUTES }}
-      TF_VAR_create_terraform_shared_data_bucket: ${{ vars.CREATE_TERRAFORM_SHARED_DATA_BUCKET || 'true' }}
       TF_VAR_terraform_shared_data_bucket_name: ${{ vars.TERRAFORM_SHARED_DATA_BUCKET_NAME || vars.TF_STATE_BUCKET }}
-      TF_VAR_terraform_shared_data_bucket_force_destroy: ${{ vars.TERRAFORM_SHARED_DATA_BUCKET_FORCE_DESTROY || 'false' }}
       TF_VAR_observability_enabled: ${{ vars.OBSERVABILITY_ENABLED || 'true' }}
-      TF_VAR_observability_environment_name: ${{ vars.OBSERVABILITY_ENVIRONMENT_NAME || 'lab' }}
-      TF_VAR_observability_enable_dashboard: ${{ vars.OBSERVABILITY_ENABLE_DASHBOARD || 'true' }}
-      TF_VAR_observability_enable_route53_healthchecks: ${{ vars.OBSERVABILITY_ENABLE_ROUTE53_HEALTHCHECKS || 'true' }}
       TF_VAR_observability_enable_k8s_resource_metrics: ${{ vars.OBSERVABILITY_ENABLE_K8S_RESOURCE_METRICS || 'true' }}
       TF_VAR_observability_manage_node_role_policy_attachment: ${{ vars.OBSERVABILITY_MANAGE_NODE_ROLE_POLICY_ATTACHMENT || 'false' }}
       TF_VAR_observability_alert_email_endpoints: ${{ vars.OBSERVABILITY_ALERT_EMAIL_ENDPOINTS || '[]' }}
-      TF_VAR_observability_app_log_retention_in_days: ${{ vars.OBSERVABILITY_APP_LOG_RETENTION_IN_DAYS || '14' }}
-      TF_VAR_observability_prometheus_log_retention_in_days: ${{ vars.OBSERVABILITY_PROMETHEUS_LOG_RETENTION_IN_DAYS || '7' }}
-      TF_VAR_observability_metric_namespace: ${{ vars.OBSERVABILITY_METRIC_NAMESPACE || 'Oficina/Observability' }}
-      TF_VAR_observability_api_latency_warning_threshold_ms: ${{ vars.OBSERVABILITY_API_LATENCY_WARNING_THRESHOLD_MS || '1500' }}
-      TF_VAR_observability_api_latency_critical_threshold_ms: ${{ vars.OBSERVABILITY_API_LATENCY_CRITICAL_THRESHOLD_MS || '3000' }}
-      TF_VAR_observability_integration_failures_warning_threshold: ${{ vars.OBSERVABILITY_INTEGRATION_FAILURES_WARNING_THRESHOLD || '1' }}
-      TF_VAR_observability_integration_failures_critical_threshold: ${{ vars.OBSERVABILITY_INTEGRATION_FAILURES_CRITICAL_THRESHOLD || '3' }}
-      TF_VAR_observability_os_processing_failures_warning_threshold: ${{ vars.OBSERVABILITY_OS_PROCESSING_FAILURES_WARNING_THRESHOLD || '1' }}
-      TF_VAR_observability_os_processing_failures_critical_threshold: ${{ vars.OBSERVABILITY_OS_PROCESSING_FAILURES_CRITICAL_THRESHOLD || '3' }}
-      TF_VAR_observability_alarm_period_seconds: ${{ vars.OBSERVABILITY_ALARM_PERIOD_SECONDS || '300' }}
       OBSERVABILITY_ENABLED: ${{ vars.OBSERVABILITY_ENABLED || 'true' }}
-      OBSERVABILITY_APP_LOG_GROUP_NAME: ${{ vars.OBSERVABILITY_APP_LOG_GROUP_NAME || '/oficina/lab/eks/oficina-app' }}
-      OBSERVABILITY_PROMETHEUS_LOG_GROUP_NAME: ${{ vars.OBSERVABILITY_PROMETHEUS_LOG_GROUP_NAME || format('/aws/containerinsights/{0}/prometheus', vars.EKS_CLUSTER_NAME || 'eks-lab') }}
       OBSERVABILITY_ENABLE_K8S_RESOURCE_METRICS: ${{ vars.OBSERVABILITY_ENABLE_K8S_RESOURCE_METRICS || 'true' }}
-      OBSERVABILITY_FLUENT_BIT_IMAGE: ${{ vars.OBSERVABILITY_FLUENT_BIT_IMAGE || 'public.ecr.aws/aws-observability/aws-for-fluent-bit:2.34.3.20260423' }}
-      OBSERVABILITY_CWAGENT_IMAGE: ${{ vars.OBSERVABILITY_CWAGENT_IMAGE || 'public.ecr.aws/cloudwatch-agent/cloudwatch-agent:1.300066.1' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -181,7 +137,7 @@ jobs:
         shell: bash
         env:
           K8S_DATABASE_ENV_FILE: ${{ secrets.K8S_DATABASE_ENV_FILE }}
-        run: bash ./scripts/ci-deploy.sh
+        run: bash ./scripts/actions/ci-deploy.sh
 
   open-pull-request-to-main:
     needs: validate
