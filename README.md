@@ -46,6 +46,111 @@ O repositório segue um layout em diretórios:
 - `scripts/`: automações operacionais e de CI
 - `docs/telemetria.md`: convenção de telemetria vendor-neutral da suíte
 
+## Arquitetura dos serviços
+
+O diagrama abaixo resume os serviços criados ou aplicados por este repositório no ambiente `lab` e os principais relacionamentos entre eles. Blocos marcados como opcionais dependem das flags de Terraform ou dos inputs de deploy correspondentes.
+
+```mermaid
+flowchart TB
+  user[Cliente HTTP] --> apigw[API Gateway HTTP API]
+
+  subgraph aws[AWS lab]
+    subgraph network[VPC do laboratorio]
+      igw[Internet Gateway]
+      subnets[2 sub-redes publicas]
+
+      subgraph eks[EKS]
+        cp[Control plane]
+        ng[Managed node group / ASG]
+
+        subgraph k8s[Kubernetes]
+          appsvc[Service oficina-app<br/>NodePort 30080]
+          apppod[Deployment oficina-app<br/>porta 8080]
+          appcfg[ConfigMap oficina-app-config]
+          jwtsecret[Secret oficina-jwt-keys]
+          dbsecret[Secret oficina-database-env<br/>opcional]
+
+          mailhogsvc[Service mailhog<br/>ClusterIP 1025/8025]
+          mailhogsmtp[Service mailhog-smtp-private<br/>NodePort 31025]
+          mailhogpod[Deployment mailhog]
+
+          fb[DaemonSet fluent-bit]
+          cwagent[Deployment cwagent-prometheus]
+          keycloak[Addon opcional Keycloak<br/>ClusterIP 8080]
+        end
+      end
+
+      vpclink[VPC Link]
+      appnlb[NLB interno oficina-app<br/>listener 8080]
+      smtpnlb[NLB interno MailHog SMTP<br/>listener 1025]
+      apisg[SG VPC Link oficina-app]
+      notifsg[SG notificacao-lambda]
+      lambdabackends[Lambdas externas<br/>rotas opcionais]
+    end
+
+    ecr[ECR oficina-app<br/>opcional/reutilizavel]
+    s3[S3 bucket compartilhado Terraform]
+
+    subgraph obs[Observabilidade AWS-native]
+      apilogs[CloudWatch Logs<br/>API Gateway]
+      applogs[CloudWatch Logs<br/>oficina-app]
+      promlogs[CloudWatch Logs<br/>ContainerInsights/Prometheus]
+      metrics[CloudWatch metric filters]
+      alarms[CloudWatch alarms]
+      dashboard[CloudWatch dashboard]
+      sns[SNS warning/critical]
+      r53[Route 53 health checks<br/>opcional]
+    end
+  end
+
+  apigw --> apilogs
+  apigw --> vpclink
+  apigw -.AWS_PROXY opcional.-> lambdabackends
+  igw --> subnets
+  subnets --> cp
+  subnets --> ng
+  subnets --> vpclink
+  subnets --> appnlb
+  subnets --> smtpnlb
+  vpclink --> apisg
+  apisg --> appnlb
+  appnlb --> ng
+  ng --> appsvc
+  appsvc --> apppod
+  appcfg --> apppod
+  jwtsecret --> apppod
+  dbsecret -.env opcional.-> apppod
+  ecr --> apppod
+
+  apppod --> mailhogsvc
+  mailhogsvc --> mailhogpod
+  mailhogsmtp --> mailhogpod
+  notiflambda[notificacao-lambda<br/>repo externo] -.usa SG dedicado.-> notifsg
+  notifsg --> smtpnlb
+  smtpnlb --> ng
+  ng --> mailhogsmtp
+
+  authlambda[auth-lambda / JWKS<br/>repo externo] -.issuer/JWKS.-> apppod
+  database[(PostgreSQL lab<br/>repo externo)] -.credenciais via secret.-> dbsecret
+
+  fb --> applogs
+  fb -.le logs dos pods.-> apppod
+  cwagent -.scrape cAdvisor.-> ng
+  cwagent --> promlogs
+  apilogs --> metrics
+  applogs --> metrics
+  promlogs --> dashboard
+  metrics --> alarms
+  alarms --> sns
+  r53 -.GET /q/health.-> apigw
+  r53 --> alarms
+
+  s3 -.state/dados compartilhados.-> terraform[Terraform lab]
+  terraform -.provisiona.-> subnets
+  terraform -.provisiona.-> ecr
+  terraform -.provisiona.-> obs
+```
+
 ## Estado do Terraform
 
 O ambiente `lab` cria por padrão um bucket S3 dedicado aos dados compartilhados do Terraform. Mesmo assim, o bootstrap manual precisa começar com state local:
