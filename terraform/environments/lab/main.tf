@@ -22,36 +22,8 @@ data "aws_security_groups" "shared_database" {
   }
 }
 
-data "aws_security_groups" "shared_eks_cluster" {
-  count = var.reuse_database_network && local.existing_shared_vpc_id != null ? 1 : 0
-
-  filter {
-    name   = "vpc-id"
-    values = [local.existing_shared_vpc_id]
-  }
-
-  filter {
-    name   = "tag:aws:eks:cluster-name"
-    values = [var.cluster_name]
-  }
-}
-
-data "aws_security_groups" "shared_api_gateway_vpc_link" {
-  count = var.reuse_database_network && local.existing_shared_vpc_id != null ? 1 : 0
-
-  filter {
-    name   = "vpc-id"
-    values = [local.existing_shared_vpc_id]
-  }
-
-  filter {
-    name   = "tag:Name"
-    values = ["${local.api_gateway_name}-oficina-app-vpc-link"]
-  }
-}
-
 data "aws_subnets" "shared_public" {
-  count = local.reuse_discovered_database_network && length(var.public_subnet_ids) == 0 ? 1 : 0
+  count = var.reuse_database_network && local.existing_shared_vpc_id != null && length(var.public_subnet_ids) == 0 ? 1 : 0
 
   filter {
     name   = "vpc-id"
@@ -82,29 +54,22 @@ locals {
     data.aws_security_groups.shared_database[0].ids,
     [],
   )
-  shared_eks_cluster_security_group_ids = try(
-    data.aws_security_groups.shared_eks_cluster[0].ids,
-    [],
-  )
-  shared_api_gateway_vpc_link_security_group_ids = try(
-    data.aws_security_groups.shared_api_gateway_vpc_link[0].ids,
-    [],
-  )
   discovered_public_subnet_ids = try(data.aws_subnets.shared_public[0].ids, [])
   reuse_discovered_database_network = (
     var.reuse_database_network &&
     var.vpc_id == null &&
     local.existing_shared_vpc_id != null &&
-    length(local.shared_database_security_group_ids) == 1 &&
-    length(local.shared_eks_cluster_security_group_ids) == 0 &&
-    length(local.shared_api_gateway_vpc_link_security_group_ids) == 0
+    length(local.shared_database_security_group_ids) == 1
   )
-  create_network = var.vpc_id == null && length(local.existing_shared_vpc_ids) == 0 && !local.reuse_discovered_database_network && var.create_network_if_missing
-  resolved_vpc_id = coalesce(
-    var.vpc_id,
-    local.reuse_discovered_database_network ? local.existing_shared_vpc_id : null,
-    try(module.network[0].vpc_id, null),
-  )
+  create_network = var.vpc_id == null && !local.reuse_discovered_database_network && var.create_network_if_missing
+  resolved_vpc_id_candidates = [
+    for vpc_id in [
+      var.vpc_id,
+      local.reuse_discovered_database_network ? local.existing_shared_vpc_id : null,
+      try(module.network[0].vpc_id, null),
+    ] : vpc_id if vpc_id != null && vpc_id != ""
+  ]
+  resolved_vpc_id = length(local.resolved_vpc_id_candidates) > 0 ? local.resolved_vpc_id_candidates[0] : null
   resolved_public_subnet_ids = length(var.public_subnet_ids) > 0 ? var.public_subnet_ids : (
     local.reuse_discovered_database_network ? local.discovered_public_subnet_ids : try(module.network[0].public_subnet_ids, [])
   )
