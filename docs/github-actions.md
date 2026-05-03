@@ -65,7 +65,7 @@ Depois desse cleanup, o workflow executa o destroy Terraform deste repositório 
 - `TF_VAR_ecr_force_delete=true`
 - `TF_VAR_terraform_shared_data_bucket_force_destroy=true`
 
-Ao carregar o backend S3, o script isola qualquer `terraform.tfstate` local que não tenha sido gerado por uma migração intencional do próprio destroy. Quando o bucket compartilhado faz parte do state, a migração para state local cria um marcador temporário; se uma tentativa falhar, a próxima continua desse state local em vez de tentar migrar novamente a partir do remoto. Depois da migração, o script esvazia explicitamente o bucket compartilhado versionado antes do `terraform destroy`, removendo versões, delete markers e multipart uploads pendentes para evitar falha `BucketNotEmpty`.
+Ao carregar o backend S3, o script isola qualquer `terraform.tfstate` local que não tenha sido gerado por uma migração intencional do próprio destroy. Quando o bucket compartilhado faz parte do state, a migração para state local cria um marcador temporário; se uma tentativa falhar, a próxima continua desse state local em vez de tentar migrar novamente a partir do remoto. O script preserva uma cópia remota do state e remove temporariamente o bucket do state local de destroy, deixando o esvaziamento e a remoção do bucket versionado para depois do `terraform destroy` bem-sucedido. Antes do destroy, ele também apaga explicitamente as imagens do ECR configurado para evitar falha de exclusão por repositório não vazio.
 
 Com isso, o teardown remove, quando os recursos estiverem no state deste ambiente:
 
