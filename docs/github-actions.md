@@ -173,6 +173,8 @@ Se o bucket ainda não existir, o script faz bootstrap com state local, cria o b
 
 Se o bucket já existir, o script o reutiliza normalmente. Quando o bucket já faz parte do state desse ambiente, ele continua sendo gerenciado pelo Terraform; quando for um bucket externo preexistente, o workflow apenas o usa como backend sem tentar recriá-lo.
 
-Se `TF_STATE_BUCKET` não for informado, o workflow deriva automaticamente o nome do bucket compartilhado a partir do cluster e da conta AWS, usa state local apenas durante o bootstrap e migra em seguida para backend remoto S3.
+Se `TF_STATE_BUCKET` não for informado, o workflow deriva automaticamente o nome do bucket compartilhado a partir de `shared_infra_name`/`cluster_name` e da conta AWS, usa state local apenas durante o bootstrap e migra em seguida para backend remoto S3.
+
+Quando o bucket já existe, mas o state remoto deste repo ainda não, o workflow permite reutilizar a rede do `oficina-infra-db` se encontrar a VPC `<shared_infra_name>-vpc` com o security group `<database_identifier>-sg` e sem sinais de EKS/API Gateway deste repo na mesma VPC.
 
 Se um `apply` falhar depois de criar recursos AWS, mas antes de persistir o state remoto, o proximo `Deploy Lab` pode bloquear para evitar duplicacao de recursos. Nesse caso, remova ou importe os recursos orfaos antes de tentar um novo deploy.

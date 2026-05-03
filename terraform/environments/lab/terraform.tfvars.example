@@ -1,6 +1,9 @@
 region       = "us-east-1"
 cluster_name = "eks-lab"
 
+# Identidade compartilhada da suite para VPC e bucket S3. Se omitido, usa cluster_name.
+# shared_infra_name = "eks-lab"
+
 # Informe uma versao suportada pelo seu laboratorio/EKS.
 kubernetes_version = "1.35"
 
@@ -17,6 +20,24 @@ min_size      = 1
 max_size      = 2
 
 cluster_endpoint_public_access_cidrs = ["0.0.0.0/0"]
+
+# Por default, se o oficina-infra-db tiver subido antes, este projeto reutiliza
+# a VPC compartilhada quando encontra o SG do RDS e nao encontra sinais de um EKS
+# ja existente na mesma rede.
+reuse_database_network = true
+database_identifier    = "oficina-postgres-lab"
+
+# Rede criada automaticamente quando nao houver rede reutilizavel.
+# create_network_if_missing = true
+# network_vpc_cidr          = "10.0.0.0/16"
+# public_subnet_cidrs       = ["10.0.0.0/20", "10.0.16.0/20"]
+
+# Opcional. Forca uma rede especifica e desativa a criacao automatica de VPC.
+# vpc_id = "vpc-xxxxxxxx"
+# public_subnet_ids = [
+#   "subnet-aaaaaaaa",
+#   "subnet-bbbbbbbb",
+# ]
 
 # Crie o repositorio no primeiro apply caso ele ainda nao exista.
 create_ecr_repository = true

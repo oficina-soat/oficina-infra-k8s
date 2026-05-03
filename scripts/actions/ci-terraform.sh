@@ -13,6 +13,8 @@ AWS_REGION="${AWS_REGION:-}"
 EKS_CLUSTER_NAME="${EKS_CLUSTER_NAME:-}"
 export TF_VAR_region="${TF_VAR_region:-${AWS_REGION}}"
 export TF_VAR_cluster_name="${TF_VAR_cluster_name:-${EKS_CLUSTER_NAME}}"
+export TF_VAR_shared_infra_name="${TF_VAR_shared_infra_name:-${SHARED_INFRA_NAME:-}}"
+export TF_VAR_database_identifier="${TF_VAR_database_identifier:-${DB_IDENTIFIER:-${OFICINA_DB_IDENTIFIER}}}"
 export TF_VAR_ecr_repository_name="${TF_VAR_ecr_repository_name:-${ECR_REPOSITORY_NAME:-oficina}}"
 TF_STATE_BUCKET="${TF_STATE_BUCKET:-}"
 TF_STATE_KEY="${TF_STATE_KEY:-${OFICINA_TF_STATE_KEY}}"
@@ -40,8 +42,13 @@ trap cleanup EXIT
 normalize_optional_envs() {
   unset_if_empty "TF_STATE_BUCKET"
   unset_if_empty "TF_STATE_DYNAMODB_TABLE"
+  unset_if_empty "TF_VAR_shared_infra_name"
+  unset_if_empty "TF_VAR_database_identifier"
   unset_if_empty "TF_VAR_azs"
   unset_if_empty "TF_VAR_public_subnet_cidrs"
+  unset_if_empty "TF_VAR_network_vpc_cidr"
+  unset_if_empty "TF_VAR_vpc_id"
+  unset_if_empty "TF_VAR_public_subnet_ids"
   unset_if_empty "TF_VAR_cluster_endpoint_public_access_cidrs"
   unset_if_empty "TF_VAR_eks_cluster_role_arn"
   unset_if_empty "TF_VAR_eks_node_role_arn"
@@ -66,6 +73,15 @@ aws_caller_account_id() {
   aws sts get-caller-identity --query 'Account' --output text
 }
 
+resolve_shared_infra_name() {
+  if [[ -n "${TF_VAR_shared_infra_name:-}" ]]; then
+    printf '%s\n' "${TF_VAR_shared_infra_name}"
+    return
+  fi
+
+  printf '%s\n' "${TF_VAR_cluster_name}"
+}
+
 resolve_shared_bucket_name() {
   if [[ -n "${TF_VAR_terraform_shared_data_bucket_name:-}" ]]; then
     printf '%s\n' "${TF_VAR_terraform_shared_data_bucket_name:-}"
@@ -73,7 +89,7 @@ resolve_shared_bucket_name() {
   fi
 
   printf 'tf-shared-%s-%s-%s\n' \
-    "${TF_VAR_cluster_name}" \
+    "$(resolve_shared_infra_name)" \
     "$(aws_caller_account_id)" \
     "${TF_VAR_region}"
 }
@@ -450,7 +466,7 @@ orphan_network_exists() {
   local vpc_ids=""
   vpc_ids="$(aws ec2 describe-vpcs \
     --region "${AWS_REGION}" \
-    --filters "Name=tag:Name,Values=${EKS_CLUSTER_NAME}-vpc" \
+    --filters "Name=tag:Name,Values=$(resolve_shared_infra_name)-vpc" \
     --query 'Vpcs[].VpcId' \
     --output text 2>/dev/null || true)"
 
@@ -460,9 +476,56 @@ orphan_network_exists() {
 orphan_network_ids() {
   aws ec2 describe-vpcs \
     --region "${AWS_REGION}" \
-    --filters "Name=tag:Name,Values=${EKS_CLUSTER_NAME}-vpc" \
+    --filters "Name=tag:Name,Values=$(resolve_shared_infra_name)-vpc" \
     --query 'Vpcs[].VpcId' \
     --output text 2>/dev/null || true
+}
+
+database_network_reusable() {
+  local vpc_ids vpc_id vpc_count db_security_group_ids eks_security_group_ids api_gateway_security_group_ids api_gateway_name
+  vpc_ids="$(orphan_network_ids)"
+  api_gateway_name="$(effective_api_gateway_name)"
+
+  if [[ -z "${vpc_ids}" || "${vpc_ids}" == "None" ]]; then
+    return 1
+  fi
+
+  vpc_count="$(wc -w <<<"${vpc_ids}")"
+  if [[ "${vpc_count}" != "1" ]]; then
+    return 1
+  fi
+
+  for vpc_id in ${vpc_ids}; do
+    db_security_group_ids="$(aws ec2 describe-security-groups \
+      --region "${AWS_REGION}" \
+      --filters \
+        "Name=vpc-id,Values=${vpc_id}" \
+        "Name=group-name,Values=${TF_VAR_database_identifier}-sg" \
+      --query 'SecurityGroups[].GroupId' \
+      --output text 2>/dev/null || true)"
+    eks_security_group_ids="$(aws ec2 describe-security-groups \
+      --region "${AWS_REGION}" \
+      --filters \
+        "Name=vpc-id,Values=${vpc_id}" \
+        "Name=tag:aws:eks:cluster-name,Values=${EKS_CLUSTER_NAME}" \
+      --query 'SecurityGroups[].GroupId' \
+      --output text 2>/dev/null || true)"
+    api_gateway_security_group_ids="$(aws ec2 describe-security-groups \
+      --region "${AWS_REGION}" \
+      --filters \
+        "Name=vpc-id,Values=${vpc_id}" \
+        "Name=tag:Name,Values=${api_gateway_name}-oficina-app-vpc-link" \
+      --query 'SecurityGroups[].GroupId' \
+      --output text 2>/dev/null || true)"
+
+    if [[ -n "${db_security_group_ids}" && "${db_security_group_ids}" != "None" ]] &&
+      [[ -z "${eks_security_group_ids}" || "${eks_security_group_ids}" == "None" ]] &&
+      [[ -z "${api_gateway_security_group_ids}" || "${api_gateway_security_group_ids}" == "None" ]]; then
+      return 0
+    fi
+  done
+
+  return 1
 }
 
 effective_api_gateway_name() {
@@ -503,6 +566,11 @@ fail_missing_remote_state_with_existing_resources() {
   fi
 
   if orphan_network_exists; then
+    if database_network_reusable; then
+      log "Rede compartilhada $(resolve_shared_infra_name)-vpc encontrada com sinais do banco ${TF_VAR_database_identifier}; o Terraform vai reutiliza-la no bootstrap."
+      return
+    fi
+
     echo "A rede do laboratorio ${EKS_CLUSTER_NAME} ainda existe na AWS (VPCs: $(orphan_network_ids)), mas o state remoto ${EFFECTIVE_TF_STATE_BUCKET}/${TF_STATE_KEY} nao foi encontrado. Para evitar duplicacao de VPC/subnets, remova ou importe os recursos orfaos antes de rodar o workflow Deploy Lab novamente." >&2
     exit 1
   fi

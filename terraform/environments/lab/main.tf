@@ -1,10 +1,112 @@
 data "aws_caller_identity" "current" {}
 
+data "aws_vpcs" "shared" {
+  count = var.reuse_database_network && var.vpc_id == null ? 1 : 0
+
+  tags = {
+    Name = "${local.shared_infra_name}-vpc"
+  }
+}
+
+data "aws_security_groups" "shared_database" {
+  count = var.reuse_database_network && local.existing_shared_vpc_id != null ? 1 : 0
+
+  filter {
+    name   = "vpc-id"
+    values = [local.existing_shared_vpc_id]
+  }
+
+  filter {
+    name   = "group-name"
+    values = ["${var.database_identifier}-sg"]
+  }
+}
+
+data "aws_security_groups" "shared_eks_cluster" {
+  count = var.reuse_database_network && local.existing_shared_vpc_id != null ? 1 : 0
+
+  filter {
+    name   = "vpc-id"
+    values = [local.existing_shared_vpc_id]
+  }
+
+  filter {
+    name   = "tag:aws:eks:cluster-name"
+    values = [var.cluster_name]
+  }
+}
+
+data "aws_security_groups" "shared_api_gateway_vpc_link" {
+  count = var.reuse_database_network && local.existing_shared_vpc_id != null ? 1 : 0
+
+  filter {
+    name   = "vpc-id"
+    values = [local.existing_shared_vpc_id]
+  }
+
+  filter {
+    name   = "tag:Name"
+    values = ["${local.api_gateway_name}-oficina-app-vpc-link"]
+  }
+}
+
+data "aws_subnets" "shared_public" {
+  count = local.reuse_discovered_database_network && length(var.public_subnet_ids) == 0 ? 1 : 0
+
+  filter {
+    name   = "vpc-id"
+    values = [local.existing_shared_vpc_id]
+  }
+
+  filter {
+    name   = "tag:kubernetes.io/cluster/${var.cluster_name}"
+    values = ["shared"]
+  }
+
+  filter {
+    name   = "tag:kubernetes.io/role/elb"
+    values = ["1"]
+  }
+}
+
 locals {
-  azs = length(var.azs) > 0 ? slice(var.azs, 0, 2) : ["${var.region}a", "${var.region}b"]
+  shared_infra_name = coalesce(var.shared_infra_name, var.cluster_name)
+  azs               = length(var.azs) > 0 ? slice(var.azs, 0, 2) : ["${var.region}a", "${var.region}b"]
   terraform_shared_data_bucket_name = coalesce(
     var.terraform_shared_data_bucket_name,
-    "tf-shared-${var.cluster_name}-${data.aws_caller_identity.current.account_id}-${var.region}"
+    "tf-shared-${local.shared_infra_name}-${data.aws_caller_identity.current.account_id}-${var.region}"
+  )
+  existing_shared_vpc_ids = try(data.aws_vpcs.shared[0].ids, [])
+  existing_shared_vpc_id  = length(local.existing_shared_vpc_ids) == 1 ? local.existing_shared_vpc_ids[0] : null
+  shared_database_security_group_ids = try(
+    data.aws_security_groups.shared_database[0].ids,
+    [],
+  )
+  shared_eks_cluster_security_group_ids = try(
+    data.aws_security_groups.shared_eks_cluster[0].ids,
+    [],
+  )
+  shared_api_gateway_vpc_link_security_group_ids = try(
+    data.aws_security_groups.shared_api_gateway_vpc_link[0].ids,
+    [],
+  )
+  discovered_public_subnet_ids = try(data.aws_subnets.shared_public[0].ids, [])
+  reuse_discovered_database_network = (
+    var.reuse_database_network &&
+    var.vpc_id == null &&
+    local.existing_shared_vpc_id != null &&
+    length(local.shared_database_security_group_ids) == 1 &&
+    length(local.shared_eks_cluster_security_group_ids) == 0 &&
+    length(local.shared_api_gateway_vpc_link_security_group_ids) == 0
+  )
+  create_network = var.vpc_id == null && length(local.existing_shared_vpc_ids) == 0 && !local.reuse_discovered_database_network && var.create_network_if_missing
+  resolved_vpc_id = coalesce(
+    var.vpc_id,
+    local.reuse_discovered_database_network ? local.existing_shared_vpc_id : null,
+    try(module.network[0].vpc_id, null),
+  )
+  resolved_public_subnet_ids = length(var.public_subnet_ids) > 0 ? var.public_subnet_ids : (
+    local.reuse_discovered_database_network ? local.discovered_public_subnet_ids : try(module.network[0].public_subnet_ids, [])
   )
   observability_app_log_group_name        = "/oficina/${var.observability_environment_name}/eks/oficina-app"
   observability_prometheus_log_group_name = "/aws/containerinsights/${var.cluster_name}/prometheus"
@@ -97,12 +199,35 @@ locals {
 }
 
 module "network" {
+  count  = local.create_network ? 1 : 0
   source = "../../modules/network"
 
-  name                = var.cluster_name
+  name                = local.shared_infra_name
   cluster_name        = var.cluster_name
+  vpc_cidr            = var.network_vpc_cidr
   azs                 = local.azs
   public_subnet_cidrs = var.public_subnet_cidrs
+}
+
+check "network_inputs" {
+  assert {
+    condition     = local.resolved_vpc_id != null && length(local.resolved_public_subnet_ids) >= 2
+    error_message = "Informe vpc_id e pelo menos duas public_subnet_ids, reutilize uma rede do banco com subnets tagueadas para o cluster, ou mantenha create_network_if_missing=true para criar a rede automaticamente."
+  }
+}
+
+check "shared_vpc_uniqueness" {
+  assert {
+    condition     = length(local.existing_shared_vpc_ids) <= 1
+    error_message = "Mais de uma VPC com o nome esperado foi encontrada. Ajuste shared_infra_name ou informe vpc_id explicitamente."
+  }
+}
+
+check "database_network_public_subnets" {
+  assert {
+    condition     = !local.reuse_discovered_database_network || length(local.resolved_public_subnet_ids) >= 2
+    error_message = "A rede descoberta do banco nao possui pelo menos duas subnets publicas tagueadas para o cluster EKS. Informe public_subnet_ids explicitamente ou corrija as tags da rede compartilhada."
+  }
 }
 
 module "eks" {
@@ -112,7 +237,7 @@ module "eks" {
   kubernetes_version           = var.kubernetes_version
   cluster_role_arn             = var.eks_cluster_role_arn
   node_role_arn                = var.eks_node_role_arn
-  subnet_ids                   = module.network.public_subnet_ids
+  subnet_ids                   = local.resolved_public_subnet_ids
   endpoint_public_access_cidrs = var.cluster_endpoint_public_access_cidrs
   access_principal_arn         = var.eks_access_principal_arn
   instance_type                = var.instance_type
@@ -144,7 +269,7 @@ resource "aws_security_group" "oficina_app_api_gateway_vpc_link" {
 
   name_prefix = "${local.api_gateway_name}-oficina-app-vpc-link-"
   description = "Security group do VPC Link para acessar o oficina-app"
-  vpc_id      = module.network.vpc_id
+  vpc_id      = local.resolved_vpc_id
 
   egress {
     from_port   = 0
@@ -166,7 +291,7 @@ resource "aws_security_group" "notificacao_lambda" {
 
   name        = local.notificacao_lambda_security_group_name
   description = "Security group dedicado da notificacao-lambda no ambiente lab"
-  vpc_id      = module.network.vpc_id
+  vpc_id      = local.resolved_vpc_id
 
   egress {
     from_port   = 0
@@ -188,8 +313,8 @@ module "oficina_app_private_nlb" {
   source = "../../modules/internal_nodeport_nlb"
 
   name                              = local.oficina_app_private_nlb_name
-  vpc_id                            = module.network.vpc_id
-  subnet_ids                        = module.network.public_subnet_ids
+  vpc_id                            = local.resolved_vpc_id
+  subnet_ids                        = local.resolved_public_subnet_ids
   listener_port                     = var.oficina_app_private_listener_port
   target_node_port                  = var.oficina_app_node_port
   target_autoscaling_group_name     = module.eks.node_group_autoscaling_group_name
@@ -208,8 +333,8 @@ module "mailhog_smtp_private_nlb" {
   source = "../../modules/internal_nodeport_nlb"
 
   name                              = local.mailhog_smtp_private_nlb_name
-  vpc_id                            = module.network.vpc_id
-  subnet_ids                        = module.network.public_subnet_ids
+  vpc_id                            = local.resolved_vpc_id
+  subnet_ids                        = local.resolved_public_subnet_ids
   listener_port                     = var.mailhog_smtp_private_listener_port
   target_node_port                  = var.mailhog_smtp_node_port
   target_autoscaling_group_name     = module.eks.node_group_autoscaling_group_name
@@ -233,8 +358,8 @@ module "api_gateway" {
   access_log_retention_in_days         = var.api_gateway_access_log_retention_in_days
   default_route_throttling_burst_limit = var.api_gateway_default_route_throttling_burst_limit
   default_route_throttling_rate_limit  = var.api_gateway_default_route_throttling_rate_limit
-  vpc_id                               = module.network.vpc_id
-  vpc_link_subnet_ids                  = length(var.api_gateway_vpc_link_subnet_ids) > 0 ? var.api_gateway_vpc_link_subnet_ids : module.network.public_subnet_ids
+  vpc_id                               = local.resolved_vpc_id
+  vpc_link_subnet_ids                  = length(var.api_gateway_vpc_link_subnet_ids) > 0 ? var.api_gateway_vpc_link_subnet_ids : local.resolved_public_subnet_ids
   vpc_link_security_group_ids          = local.api_gateway_vpc_link_security_group_ids
   create_vpc_link_security_group       = local.api_gateway_create_vpc_link_security_sg
   http_routes                          = local.api_gateway_http_routes

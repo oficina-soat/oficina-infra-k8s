@@ -24,12 +24,27 @@ output "ecr_repository_url" {
   value = module.ecr.repository_url
 }
 
+output "shared_infra_name" {
+  description = "Prefixo compartilhado usado para descobrir ou nomear recursos gerais da suite."
+  value       = local.shared_infra_name
+}
+
 output "vpc_id" {
-  value = module.network.vpc_id
+  value = local.resolved_vpc_id
 }
 
 output "public_subnet_ids" {
-  value = module.network.public_subnet_ids
+  value = local.resolved_public_subnet_ids
+}
+
+output "network_managed_by_terraform" {
+  description = "Indica se este state criou e gerencia a VPC/subnets do laboratorio."
+  value       = local.create_network
+}
+
+output "reused_database_network" {
+  description = "Indica se a rede foi reutilizada a partir dos sinais do oficina-infra-db."
+  value       = local.reuse_discovered_database_network
 }
 
 output "terraform_shared_data_bucket_name" {

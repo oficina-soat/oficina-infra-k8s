@@ -10,6 +10,18 @@ variable "cluster_name" {
   default     = "eks-lab"
 }
 
+variable "shared_infra_name" {
+  type        = string
+  description = "Prefixo compartilhado para recursos de identidade geral da suite, como VPC e bucket S3. Quando nulo, usa cluster_name."
+  default     = null
+  nullable    = true
+
+  validation {
+    condition     = var.shared_infra_name == null || trimspace(var.shared_infra_name) != ""
+    error_message = "shared_infra_name nao pode ser vazio."
+  }
+}
+
 variable "kubernetes_version" {
   type        = string
   description = "Versao do Kubernetes a ser usada pelo cluster EKS."
@@ -29,13 +41,65 @@ variable "azs" {
 
 variable "public_subnet_cidrs" {
   type        = list(string)
-  description = "CIDRs das subnets publicas. Deve ter pelo menos dois valores."
+  description = "CIDRs das subnets publicas quando a rede deste projeto precisar ser criada. Deve ter pelo menos dois valores."
   default     = ["10.0.0.0/20", "10.0.16.0/20"]
 
   validation {
     condition     = length(var.public_subnet_cidrs) >= 2
     error_message = "Informe pelo menos dois CIDRs de subnets publicas."
   }
+}
+
+variable "network_vpc_cidr" {
+  type        = string
+  description = "CIDR da VPC criada automaticamente quando create_network_if_missing=true."
+  default     = "10.0.0.0/16"
+}
+
+variable "vpc_id" {
+  type        = string
+  description = "VPC onde o EKS e recursos privados serao provisionados. Se omitido, o projeto pode reutilizar a rede do banco ou criar uma rede nova."
+  default     = null
+  nullable    = true
+
+  validation {
+    condition     = var.vpc_id == null || can(regex("^vpc-[0-9a-f]+$", var.vpc_id))
+    error_message = "vpc_id deve ser nulo ou um ID de VPC valido."
+  }
+}
+
+variable "public_subnet_ids" {
+  type        = list(string)
+  description = "Subnets usadas pelo EKS e recursos privados. Se vazia, usa as subnets publicas da rede reutilizada ou criada."
+  default     = []
+
+  validation {
+    condition     = length(var.public_subnet_ids) == 0 || length(var.public_subnet_ids) >= 2
+    error_message = "Informe pelo menos duas subnets publicas ou deixe vazio para resolucao automatica."
+  }
+}
+
+variable "reuse_database_network" {
+  type        = bool
+  description = "Quando true, tenta reutilizar a VPC compartilhada criada pelo oficina-infra-db antes de criar uma rede propria."
+  default     = true
+}
+
+variable "database_identifier" {
+  type        = string
+  description = "Identificador do RDS usado como sinal de que a rede compartilhada do oficina-infra-db ja foi provisionada."
+  default     = "oficina-postgres-lab"
+
+  validation {
+    condition     = trimspace(var.database_identifier) != ""
+    error_message = "database_identifier nao pode ser vazio."
+  }
+}
+
+variable "create_network_if_missing" {
+  type        = bool
+  description = "Quando true, cria a VPC e subnets publicas se nenhuma rede reutilizavel ou explicita for resolvida."
+  default     = true
 }
 
 variable "eks_cluster_role_arn" {
