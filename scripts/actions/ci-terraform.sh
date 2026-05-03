@@ -53,6 +53,7 @@ normalize_optional_envs() {
   unset_if_empty "TF_VAR_eks_cluster_role_arn"
   unset_if_empty "TF_VAR_eks_node_role_arn"
   unset_if_empty "TF_VAR_eks_access_principal_arn"
+  unset "TF_VAR_create_ecr_repository"
   unset_if_empty "TF_VAR_terraform_shared_data_bucket_name"
   unset_if_empty "TF_VAR_api_gateway_name"
   unset_if_empty "TF_VAR_api_gateway_vpc_link_subnet_ids"
@@ -183,7 +184,7 @@ set_eks_role_defaults() {
 }
 
 terraform_state_manages_ecr_repository() {
-  terraform -chdir="${TERRAFORM_DIR}" state list 2>/dev/null | grep -q '^module\.ecr\.aws_ecr_repository\.app\[0\]$'
+  terraform -chdir="${TERRAFORM_DIR}" state list 2>/dev/null | grep -Eq '^module\.ecr\.aws_ecr_repository\.app(\[0\])?$'
 }
 
 aws_ecr_repository_exists() {
@@ -192,16 +193,14 @@ aws_ecr_repository_exists() {
     --repository-names "${TF_VAR_ecr_repository_name}" >/dev/null 2>&1
 }
 
-set_ecr_repository_mode() {
+ensure_ecr_repository_managed() {
   if terraform_state_manages_ecr_repository; then
     log "Repositorio ECR ${TF_VAR_ecr_repository_name} ja esta no state deste ambiente; mantendo gerenciamento pelo Terraform."
-    export TF_VAR_create_ecr_repository="true"
   elif aws_ecr_repository_exists; then
-    log "Repositorio ECR ${TF_VAR_ecr_repository_name} ja existe fora do state deste ambiente; reutilizando sem tentar recriar."
-    export TF_VAR_create_ecr_repository="false"
+    log "Repositorio ECR ${TF_VAR_ecr_repository_name} ja existe fora do state deste ambiente; importando para gerenciamento pelo Terraform."
+    terraform -chdir="${TERRAFORM_DIR}" import -input=false module.ecr.aws_ecr_repository.app "${TF_VAR_ecr_repository_name}"
   else
-    log "Repositorio ECR ${TF_VAR_ecr_repository_name} ainda nao existe; habilitando criacao automatica."
-    export TF_VAR_create_ecr_repository="true"
+    log "Repositorio ECR ${TF_VAR_ecr_repository_name} ainda nao existe; sera criado pelo Terraform."
   fi
 }
 
@@ -630,7 +629,7 @@ run_apply() {
       export TF_VAR_create_terraform_shared_data_bucket="false"
       terraform_init_local
       set_shared_bucket_mode
-      set_ecr_repository_mode
+      ensure_ecr_repository_managed
       terraform_apply
 
       log "Migrando o state local para o backend S3 em ${EFFECTIVE_TF_STATE_BUCKET}."
@@ -641,7 +640,7 @@ run_apply() {
     log "Bucket de backend ${EFFECTIVE_TF_STATE_BUCKET} ainda nao existe; executando bootstrap local para criar o bucket compartilhado."
     terraform_init_local
     set_shared_bucket_mode
-    set_ecr_repository_mode
+    ensure_ecr_repository_managed
     terraform_apply
 
     log "Migrando o state local para o backend S3 em ${EFFECTIVE_TF_STATE_BUCKET}."
@@ -653,7 +652,7 @@ run_apply() {
 
   if [[ -z "${TERRAFORM_APPLY_TARGETS:-}" ]]; then
     set_shared_bucket_mode
-    set_ecr_repository_mode
+    ensure_ecr_repository_managed
   fi
 
   terraform_apply
@@ -694,7 +693,7 @@ run_destroy() {
       terraform_init_local
       export TF_VAR_terraform_shared_data_bucket_name="${EFFECTIVE_TF_STATE_BUCKET}"
       set_shared_bucket_mode
-      set_ecr_repository_mode
+      ensure_ecr_repository_managed
       if terraform_state_manages_shared_bucket; then
         empty_shared_state_bucket_if_exists "${EFFECTIVE_TF_STATE_BUCKET}"
       fi
@@ -733,7 +732,7 @@ run_destroy() {
 
   export TF_VAR_terraform_shared_data_bucket_name="${EFFECTIVE_TF_STATE_BUCKET}"
   set_shared_bucket_mode
-  set_ecr_repository_mode
+  ensure_ecr_repository_managed
   terraform_destroy
   delete_shared_state_bucket_if_requested "${EFFECTIVE_TF_STATE_BUCKET}"
   rm -f "${LOCAL_DESTROY_STATE_MARKER}"

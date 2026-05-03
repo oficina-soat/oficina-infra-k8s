@@ -187,12 +187,6 @@ variable "ecr_repository_name" {
   default     = "oficina"
 }
 
-variable "create_ecr_repository" {
-  type        = bool
-  description = "Quando true, o Terraform cria o repositorio ECR por padrao no lab. Quando false, reutiliza um repositorio existente."
-  default     = true
-}
-
 variable "ecr_force_delete" {
   type        = bool
   description = "Quando true, permite destruir o repositorio ECR mesmo com imagens."

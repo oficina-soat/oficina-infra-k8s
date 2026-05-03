@@ -52,7 +52,6 @@ O cleanup prévio remove recursos que este repositório não gerencia diretament
 - `oficina-notificacao-lambda-lab`
 - log groups dessas Lambdas e o legado `/aws/lambda/OficinaAuthLambdaNative`
 - security group dedicado do `auth-lambda`
-- repositório ECR da suíte, mesmo com imagens
 - RDS `oficina-postgres-lab`
 - parameter group, subnet group, security group, role de monitoring, log groups e alarmes do banco
 - secrets runtime da suíte no Secrets Manager, incluindo `oficina/lab/database/auth-lambda` e seus sub-secrets, quando `delete_runtime_secrets=true`
@@ -76,14 +75,14 @@ Com isso, o teardown remove, quando os recursos estiverem no state deste ambient
 - security groups dedicados da VPC, do VPC Link e da `notificacao-lambda`
 - API Gateway HTTP API, stage, rotas, integrações, JWT authorizers, VPC Link e access log group
 - stack AWS-native de observabilidade: log groups, metric filters, alarmes, dashboard, tópicos SNS, subscriptions e health checks do Route 53
-- repositório ECR criado por este ambiente, mesmo com imagens
+- repositório ECR gerenciado por este ambiente, mesmo com imagens
 - bucket S3 compartilhado do Terraform quando ele pertence a este state, mesmo com objetos e versionamento
 
 O input `skip_final_db_snapshot` controla se o RDS será removido sem snapshot final. O default e `true`, alinhado ao objetivo de zerar custo quando o laboratório não estiver em uso.
 
 O input `delete_shared_state_bucket` controla a remoção do bucket S3 compartilhado de state ao final do destroy. Quando `true`, ele remove o bucket inteiro, incluindo versionamento e qualquer state remoto ainda armazenado nele.
 
-Se o laboratorio estiver reutilizando um bucket de backend remoto ou um repositorio ECR externos ao state, o workflow os preserva por design, salvo quando `delete_shared_state_bucket=true`.
+Se o laboratorio estiver reutilizando um bucket de backend remoto externo ao state, o workflow o preserva por design, salvo quando `delete_shared_state_bucket=true`. Se o ECR configurado já existir fora do state, o script o importa para que passe a ser gerenciado por este ambiente antes do apply/destroy completo.
 
 ## Autenticação AWS
 

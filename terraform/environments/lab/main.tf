@@ -251,9 +251,8 @@ module "eks" {
 module "ecr" {
   source = "../../modules/ecr"
 
-  repository_name   = var.ecr_repository_name
-  create_repository = var.create_ecr_repository
-  force_delete      = var.ecr_force_delete
+  repository_name = var.ecr_repository_name
+  force_delete    = var.ecr_force_delete
 }
 
 module "terraform_shared_data_bucket" {
