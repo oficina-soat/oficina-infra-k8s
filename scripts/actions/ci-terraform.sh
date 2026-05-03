@@ -49,6 +49,8 @@ normalize_optional_envs() {
   unset_if_empty "TF_VAR_network_vpc_cidr"
   unset_if_empty "TF_VAR_vpc_id"
   unset_if_empty "TF_VAR_public_subnet_ids"
+  unset_if_empty "TF_VAR_reuse_database_network"
+  unset_if_empty "TF_VAR_create_network_if_missing"
   unset_if_empty "TF_VAR_cluster_endpoint_public_access_cidrs"
   unset_if_empty "TF_VAR_eks_cluster_role_arn"
   unset_if_empty "TF_VAR_eks_node_role_arn"
@@ -206,6 +208,17 @@ ensure_ecr_repository_managed() {
 
 terraform_state_manages_shared_bucket_resource() {
   terraform -chdir="${TERRAFORM_DIR}" state list 2>/dev/null | grep -q '^module\.terraform_shared_data_bucket\[0\]\.aws_s3_bucket\.this$'
+}
+
+terraform_state_manages_network() {
+  terraform -chdir="${TERRAFORM_DIR}" state list 2>/dev/null | grep -Eq '^module\.network(\[0\])?\.aws_vpc\.this$'
+}
+
+set_network_mode() {
+  if terraform_state_manages_network; then
+    log "Rede ${TF_VAR_cluster_name} ja esta no state deste ambiente; mantendo VPC/subnets gerenciadas pelo Terraform."
+    export TF_VAR_reuse_database_network="false"
+  fi
 }
 
 set_shared_bucket_mode() {
@@ -481,9 +494,8 @@ orphan_network_ids() {
 }
 
 database_network_reusable() {
-  local vpc_ids vpc_id vpc_count db_security_group_ids eks_security_group_ids api_gateway_security_group_ids api_gateway_name
+  local vpc_ids vpc_id vpc_count db_security_group_ids
   vpc_ids="$(orphan_network_ids)"
-  api_gateway_name="$(effective_api_gateway_name)"
 
   if [[ -z "${vpc_ids}" || "${vpc_ids}" == "None" ]]; then
     return 1
@@ -502,24 +514,8 @@ database_network_reusable() {
         "Name=group-name,Values=${TF_VAR_database_identifier}-sg" \
       --query 'SecurityGroups[].GroupId' \
       --output text 2>/dev/null || true)"
-    eks_security_group_ids="$(aws ec2 describe-security-groups \
-      --region "${AWS_REGION}" \
-      --filters \
-        "Name=vpc-id,Values=${vpc_id}" \
-        "Name=tag:aws:eks:cluster-name,Values=${EKS_CLUSTER_NAME}" \
-      --query 'SecurityGroups[].GroupId' \
-      --output text 2>/dev/null || true)"
-    api_gateway_security_group_ids="$(aws ec2 describe-security-groups \
-      --region "${AWS_REGION}" \
-      --filters \
-        "Name=vpc-id,Values=${vpc_id}" \
-        "Name=tag:Name,Values=${api_gateway_name}-oficina-app-vpc-link" \
-      --query 'SecurityGroups[].GroupId' \
-      --output text 2>/dev/null || true)"
 
-    if [[ -n "${db_security_group_ids}" && "${db_security_group_ids}" != "None" ]] &&
-      [[ -z "${eks_security_group_ids}" || "${eks_security_group_ids}" == "None" ]] &&
-      [[ -z "${api_gateway_security_group_ids}" || "${api_gateway_security_group_ids}" == "None" ]]; then
+    if [[ -n "${db_security_group_ids}" && "${db_security_group_ids}" != "None" ]]; then
       return 0
     fi
   done
@@ -564,6 +560,11 @@ fail_missing_remote_state_with_existing_resources() {
     exit 1
   fi
 
+  if orphan_api_gateway_exists; then
+    echo "O API Gateway do laboratorio $(effective_api_gateway_name) ainda existe na AWS (APIs: $(orphan_api_gateway_ids)), mas o state remoto ${EFFECTIVE_TF_STATE_BUCKET}/${TF_STATE_KEY} nao foi encontrado. Para evitar duplicacao do gateway, remova ou importe os recursos orfaos antes de rodar o workflow Deploy Lab novamente." >&2
+    exit 1
+  fi
+
   if orphan_network_exists; then
     if database_network_reusable; then
       log "Rede compartilhada $(resolve_shared_infra_name)-vpc encontrada com sinais do banco ${TF_VAR_database_identifier}; o Terraform vai reutiliza-la no bootstrap."
@@ -571,11 +572,6 @@ fail_missing_remote_state_with_existing_resources() {
     fi
 
     echo "A rede do laboratorio ${EKS_CLUSTER_NAME} ainda existe na AWS (VPCs: $(orphan_network_ids)), mas o state remoto ${EFFECTIVE_TF_STATE_BUCKET}/${TF_STATE_KEY} nao foi encontrado. Para evitar duplicacao de VPC/subnets, remova ou importe os recursos orfaos antes de rodar o workflow Deploy Lab novamente." >&2
-    exit 1
-  fi
-
-  if orphan_api_gateway_exists; then
-    echo "O API Gateway do laboratorio $(effective_api_gateway_name) ainda existe na AWS (APIs: $(orphan_api_gateway_ids)), mas o state remoto ${EFFECTIVE_TF_STATE_BUCKET}/${TF_STATE_KEY} nao foi encontrado. Para evitar duplicacao do gateway, remova ou importe os recursos orfaos antes de rodar o workflow Deploy Lab novamente." >&2
     exit 1
   fi
 }
@@ -629,6 +625,7 @@ run_apply() {
       export TF_VAR_create_terraform_shared_data_bucket="false"
       terraform_init_local
       set_shared_bucket_mode
+      set_network_mode
       ensure_ecr_repository_managed
       terraform_apply
 
@@ -640,6 +637,7 @@ run_apply() {
     log "Bucket de backend ${EFFECTIVE_TF_STATE_BUCKET} ainda nao existe; executando bootstrap local para criar o bucket compartilhado."
     terraform_init_local
     set_shared_bucket_mode
+    set_network_mode
     ensure_ecr_repository_managed
     terraform_apply
 
@@ -649,6 +647,7 @@ run_apply() {
   fi
 
   export TF_VAR_terraform_shared_data_bucket_name="${EFFECTIVE_TF_STATE_BUCKET}"
+  set_network_mode
 
   if [[ -z "${TERRAFORM_APPLY_TARGETS:-}" ]]; then
     set_shared_bucket_mode
@@ -678,6 +677,7 @@ run_destroy() {
     log "Bucket ${EFFECTIVE_TF_STATE_BUCKET} e state remoto encontrados; configurando backend remoto."
     create_backend_override
     terraform_init_remote
+    set_network_mode
 
     log "Executando destroy direcionado para: ${TERRAFORM_DESTROY_TARGETS}."
     terraform_destroy
@@ -693,6 +693,7 @@ run_destroy() {
       terraform_init_local
       export TF_VAR_terraform_shared_data_bucket_name="${EFFECTIVE_TF_STATE_BUCKET}"
       set_shared_bucket_mode
+      set_network_mode
       ensure_ecr_repository_managed
       if terraform_state_manages_shared_bucket; then
         empty_shared_state_bucket_if_exists "${EFFECTIVE_TF_STATE_BUCKET}"
@@ -732,6 +733,7 @@ run_destroy() {
 
   export TF_VAR_terraform_shared_data_bucket_name="${EFFECTIVE_TF_STATE_BUCKET}"
   set_shared_bucket_mode
+  set_network_mode
   ensure_ecr_repository_managed
   terraform_destroy
   delete_shared_state_bucket_if_requested "${EFFECTIVE_TF_STATE_BUCKET}"
