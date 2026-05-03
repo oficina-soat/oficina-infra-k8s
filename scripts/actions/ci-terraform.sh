@@ -30,6 +30,7 @@ backend_override_file=""
 TERRAFORM_ECR_REPOSITORY_URL_FILE="${TERRAFORM_ECR_REPOSITORY_URL_FILE:-}"
 DELETE_SHARED_STATE_BUCKET="${DELETE_SHARED_STATE_BUCKET:-false}"
 LOCAL_DESTROY_STATE_MARKER="${TERRAFORM_DIR}/.terraform-local-destroy-state"
+LOCAL_DESTROY_SHARED_BUCKET_MARKER="${TERRAFORM_DIR}/.terraform-local-destroy-shared-bucket"
 
 cleanup() {
   if [[ -n "${backend_override_file}" && -f "${backend_override_file}" ]]; then
@@ -206,6 +207,53 @@ ensure_ecr_repository_managed() {
   fi
 }
 
+empty_ecr_repository_if_exists() {
+  local repository_name="$1"
+  local image_ids_file=""
+  local image_count=""
+
+  if [[ -z "${repository_name}" ]]; then
+    return
+  fi
+
+  if ! aws_ecr_repository_exists; then
+    log "Repositorio ECR ${repository_name} ja nao existe; seguindo."
+    return
+  fi
+
+  image_ids_file="$(mktemp)"
+
+  while true; do
+    image_count="$(
+      aws ecr list-images \
+        --region "${AWS_REGION}" \
+        --repository-name "${repository_name}" \
+        --max-items 100 \
+        --query 'length(imageIds)' \
+        --output text
+    )"
+
+    if [[ "${image_count}" == "0" || "${image_count}" == "None" ]]; then
+      log "Repositorio ECR ${repository_name} nao possui imagens pendentes."
+      rm -f "${image_ids_file}"
+      return
+    fi
+
+    aws ecr list-images \
+      --region "${AWS_REGION}" \
+      --repository-name "${repository_name}" \
+      --max-items 100 \
+      --query 'imageIds' \
+      --output json > "${image_ids_file}"
+
+    log "Removendo ${image_count} imagem(ns) do repositorio ECR ${repository_name}."
+    aws ecr batch-delete-image \
+      --region "${AWS_REGION}" \
+      --repository-name "${repository_name}" \
+      --image-ids "file://${image_ids_file}" >/dev/null
+  done
+}
+
 terraform_state_manages_shared_bucket_resource() {
   terraform -chdir="${TERRAFORM_DIR}" state list 2>/dev/null | grep -q '^module\.terraform_shared_data_bucket\[0\]\.aws_s3_bucket\.this$'
 }
@@ -349,6 +397,65 @@ terraform_migrate_state_local() {
 
 terraform_state_manages_shared_bucket() {
   terraform -chdir="${TERRAFORM_DIR}" state list 2>/dev/null | grep -q '^module\.terraform_shared_data_bucket\[0\]\.aws_s3_bucket\.this$'
+}
+
+terraform_state_manages_shared_bucket_module() {
+  terraform -chdir="${TERRAFORM_DIR}" state list 2>/dev/null | grep -q '^module\.terraform_shared_data_bucket\[0\]\.'
+}
+
+preserve_local_destroy_state_remotely() {
+  if [[ ! -s "${TERRAFORM_DIR}/terraform.tfstate" ]]; then
+    return
+  fi
+
+  if ! aws_bucket_exists; then
+    return
+  fi
+
+  log "Preservando copia do state em ${EFFECTIVE_TF_STATE_BUCKET}/${TF_STATE_KEY} antes do destroy completo."
+  aws s3api put-object \
+    --region "${TF_STATE_REGION}" \
+    --bucket "${EFFECTIVE_TF_STATE_BUCKET}" \
+    --key "${TF_STATE_KEY}" \
+    --body "${TERRAFORM_DIR}/terraform.tfstate" >/dev/null
+}
+
+detach_shared_state_bucket_from_destroy_state() {
+  local bucket_name="$1"
+  local resources=()
+
+  mapfile -t resources < <(
+    terraform -chdir="${TERRAFORM_DIR}" state list 2>/dev/null |
+      grep '^module\.terraform_shared_data_bucket\[0\]\.' || true
+  )
+
+  if [[ "${#resources[@]}" -eq 0 ]]; then
+    return
+  fi
+
+  log "Removendo temporariamente o bucket de state do state local para destrui-lo somente apos a infraestrutura."
+  terraform -chdir="${TERRAFORM_DIR}" state rm "${resources[@]}" >/dev/null
+  printf '%s\n' "${bucket_name}" > "${LOCAL_DESTROY_SHARED_BUCKET_MARKER}"
+}
+
+delete_shared_state_bucket_after_successful_destroy() {
+  local bucket_name="$1"
+  local should_delete="$2"
+
+  if ! is_truthy "${should_delete}"; then
+    return
+  fi
+
+  empty_shared_state_bucket_if_exists "${bucket_name}"
+
+  if ! aws s3api head-bucket --region "${TF_STATE_REGION}" --bucket "${bucket_name}" >/dev/null 2>&1; then
+    return
+  fi
+
+  log "Removendo bucket compartilhado ${bucket_name}"
+  aws s3api delete-bucket \
+    --region "${TF_STATE_REGION}" \
+    --bucket "${bucket_name}" >/dev/null
 }
 
 aws_bucket_exists() {
@@ -660,6 +767,8 @@ run_apply() {
 
 run_destroy() {
   EFFECTIVE_TF_STATE_BUCKET="$(resolve_effective_backend_bucket)"
+  local destroy_managed_shared_bucket="false"
+  local shared_bucket_to_delete="${EFFECTIVE_TF_STATE_BUCKET}"
 
   if [[ -n "${TERRAFORM_DESTROY_TARGETS:-}" ]]; then
     if ! aws_bucket_exists; then
@@ -688,6 +797,7 @@ run_destroy() {
     if ! local_state_exists; then
       log "Marcador de destroy local encontrado, mas terraform.tfstate local nao existe; removendo marcador e carregando state remoto."
       rm -f "${LOCAL_DESTROY_STATE_MARKER}"
+      rm -f "${LOCAL_DESTROY_SHARED_BUCKET_MARKER}"
     else
       log "State local de destroy anterior encontrado; continuando destroy sem recarregar o backend remoto."
       terraform_init_local
@@ -695,12 +805,21 @@ run_destroy() {
       set_shared_bucket_mode
       set_network_mode
       ensure_ecr_repository_managed
-      if terraform_state_manages_shared_bucket; then
-        empty_shared_state_bucket_if_exists "${EFFECTIVE_TF_STATE_BUCKET}"
+      empty_ecr_repository_if_exists "${TF_VAR_ecr_repository_name}"
+      if [[ -f "${LOCAL_DESTROY_SHARED_BUCKET_MARKER}" ]]; then
+        destroy_managed_shared_bucket="true"
+        shared_bucket_to_delete="$(<"${LOCAL_DESTROY_SHARED_BUCKET_MARKER}")"
       fi
-      terraform_destroy
+
+      if ! terraform_destroy; then
+        log "Destroy falhou; mantendo o state remoto existente para permitir nova tentativa."
+        return 1
+      fi
+
+      delete_shared_state_bucket_after_successful_destroy "${shared_bucket_to_delete}" "${destroy_managed_shared_bucket}"
       delete_shared_state_bucket_if_requested "${EFFECTIVE_TF_STATE_BUCKET}"
       rm -f "${LOCAL_DESTROY_STATE_MARKER}"
+      rm -f "${LOCAL_DESTROY_SHARED_BUCKET_MARKER}"
       return
     fi
   fi
@@ -717,11 +836,14 @@ run_destroy() {
     create_backend_override
     terraform_init_remote
 
-    if terraform_state_manages_shared_bucket; then
+    if terraform_state_manages_shared_bucket_module; then
       log "O bucket de backend faz parte do state; migrando o state para backend local antes do destroy."
       export TF_VAR_create_terraform_shared_data_bucket="true"
       terraform_migrate_state_local
-      empty_shared_state_bucket_if_exists "${EFFECTIVE_TF_STATE_BUCKET}"
+      preserve_local_destroy_state_remotely
+      detach_shared_state_bucket_from_destroy_state "${EFFECTIVE_TF_STATE_BUCKET}"
+      destroy_managed_shared_bucket="true"
+      shared_bucket_to_delete="${EFFECTIVE_TF_STATE_BUCKET}"
     else
       log "O bucket de backend e externo ao state deste ambiente; destruindo a infraestrutura sem tocar no bucket."
       export TF_VAR_create_terraform_shared_data_bucket="false"
@@ -735,9 +857,17 @@ run_destroy() {
   set_shared_bucket_mode
   set_network_mode
   ensure_ecr_repository_managed
-  terraform_destroy
+  empty_ecr_repository_if_exists "${TF_VAR_ecr_repository_name}"
+
+  if ! terraform_destroy; then
+    log "Destroy falhou; mantendo o state remoto existente para permitir nova tentativa."
+    return 1
+  fi
+
+  delete_shared_state_bucket_after_successful_destroy "${shared_bucket_to_delete}" "${destroy_managed_shared_bucket}"
   delete_shared_state_bucket_if_requested "${EFFECTIVE_TF_STATE_BUCKET}"
   rm -f "${LOCAL_DESTROY_STATE_MARKER}"
+  rm -f "${LOCAL_DESTROY_SHARED_BUCKET_MARKER}"
 }
 
 normalize_optional_envs

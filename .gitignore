@@ -10,6 +10,7 @@
 *.tfstate
 *.tfstate.*
 terraform/environments/lab/.terraform-local-destroy-state
+terraform/environments/lab/.terraform-local-destroy-shared-bucket
 *.tfvars
 *.auto.tfvars
 terraform/environments/lab/backend.s3.tf

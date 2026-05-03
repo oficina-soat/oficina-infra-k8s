@@ -521,7 +521,7 @@ Depois disso, o workflow destrói, quando gerenciados por este repositório/stat
 - repositório ECR gerenciado por este ambiente, mesmo com imagens
 - bucket S3 compartilhado do Terraform quando ele faz parte do state deste ambiente, mesmo com objetos/versionamento
 
-Durante o destroy, o script diferencia state local temporário criado pela própria migração do backend de arquivos locais avulsos. Isso evita prompts de migração no `terraform init` com `-input=false` e permite que uma segunda tentativa continue de forma determinística depois de uma falha parcial. Após migrar o state para local, o script esvazia explicitamente o bucket versionado, removendo versões, delete markers e multipart uploads pendentes antes do Terraform tentar apagar o bucket.
+Durante o destroy, o script diferencia state local temporário criado pela própria migração do backend de arquivos locais avulsos. Isso evita prompts de migração no `terraform init` com `-input=false` e permite que uma segunda tentativa continue de forma determinística depois de uma falha parcial. Quando o bucket de backend faz parte deste state, o script preserva uma cópia remota do state, remove temporariamente o bucket do state local de destroy e só esvazia/remove o bucket versionado depois que a infraestrutura foi destruída. Antes do `terraform destroy`, o script também remove explicitamente as imagens do ECR para evitar falha de exclusão por repositório não vazio.
 
 Para zerar custo de armazenamento do banco, o input `skip_final_db_snapshot` fica disponível no workflow. Com o default `true`, o RDS é removido sem snapshot final.
 
