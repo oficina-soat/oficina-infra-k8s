@@ -4,9 +4,9 @@ Infraestrutura Terraform e Kubernetes da Oficina com baseline voltado para labor
 
 O projeto provisiona a base da nuvem e converge o cluster do laboratório com:
 
-- VPC enxuta com duas sub-redes públicas para evitar NAT Gateway
+- VPC enxuta com duas sub-redes públicas para evitar NAT Gateway, criada localmente ou reutilizada do `oficina-infra-db`
 - cluster Amazon EKS com managed node group mínimo para laboratório
-- repositório Amazon ECR opcional para a imagem da aplicação
+- repositório Amazon ECR obrigatório para a imagem da aplicação
 - API Gateway HTTP API com logs e throttling, pronto para expor app HTTP e Lambdas de forma opcional
 - manifests Kubernetes organizados com `kustomize` em `base`, `components` e `overlays`
 - telemetria vendor-neutral preparada com logs JSON, OpenTelemetry e probes HTTP no `oficina-app`
@@ -56,7 +56,7 @@ flowchart TB
   user[Cliente HTTP] --> apigw[API Gateway HTTP API]
 
   subgraph aws[AWS lab]
-    subgraph network[VPC do laboratorio]
+    subgraph network[VPC do laboratorio<br/>criada ou reutilizada]
       igw[Internet Gateway]
       subnets[2 sub-redes publicas]
 
@@ -88,7 +88,7 @@ flowchart TB
       lambdabackends[Lambdas externas<br/>rotas opcionais]
     end
 
-    ecr[ECR oficina-app<br/>opcional/reutilizavel]
+    ecr[ECR oficina-app<br/>gerenciado pela infra]
     s3[S3 bucket compartilhado Terraform]
 
     subgraph obs[Observabilidade AWS-native]
@@ -199,13 +199,17 @@ Variáveis principais:
 
 - `region`: região AWS do laboratório
 - `cluster_name`: nome do cluster EKS
+- `shared_infra_name`: prefixo compartilhado da suíte para VPC e bucket S3. Se omitido, usa `cluster_name`; o default efetivo é `eks-lab`
 - `kubernetes_version`: versão do Kubernetes. Padrão do projeto: `1.35`
 - `eks_cluster_role_arn` e `eks_node_role_arn`: roles preexistentes do laboratório para o control plane e os nodes; por padrão o ambiente `lab` usa as roles do laboratório
 - `eks_access_principal_arn`: principal que receberá acesso administrativo ao cluster; se omitido, o Terraform tenta usar a identidade atual
 - `instance_type`, `desired_size`, `min_size` e `max_size`: dimensionamento do managed node group
-- `public_subnet_cidrs` e `azs`: rede mínima do laboratório
+- `reuse_database_network`: quando `true`, tenta reutilizar a VPC compartilhada do `oficina-infra-db` antes de criar rede própria
+- `database_identifier`: identificador do RDS usado como sinal de que o `oficina-infra-db` já subiu. Padrão: `oficina-postgres-lab`
+- `vpc_id` e `public_subnet_ids`: forçam uma rede específica quando informados
+- `create_network_if_missing`, `network_vpc_cidr`, `public_subnet_cidrs` e `azs`: rede mínima criada por este projeto quando não houver rede reutilizável
 - `cluster_endpoint_public_access_cidrs`: CIDRs permitidos no endpoint público do EKS
-- `ecr_repository_name` e `create_ecr_repository`: repositório ECR da aplicação. No `lab`, a criação fica habilitada por padrão
+- `ecr_repository_name`: repositório ECR da aplicação. O ambiente `lab` sempre cria e gerencia esse repositório pelo Terraform
 - `create_api_gateway`: cria o HTTP API do laboratório. Padrão: `true`
 - `api_gateway_http_routes`: rotas `HTTP_PROXY` para expor a aplicação principal ou outros backends HTTP
 - `api_gateway_lambda_routes`: rotas `AWS_PROXY` para expor Lambdas existentes
@@ -251,6 +255,8 @@ Saídas principais:
 - `terraform_shared_data_bucket_name`
 - `vpc_id`
 - `public_subnet_ids`
+- `network_managed_by_terraform`
+- `reused_database_network`
 
 ## API Gateway
 
@@ -474,7 +480,9 @@ Se `TF_STATE_BUCKET` apontar para um bucket que ainda não existe, o script de C
 
 Se `TF_STATE_BUCKET` apontar para um bucket que já existe, o workflow reutiliza esse bucket normalmente. Quando o bucket já estiver no state desse ambiente, ele continua gerenciado pelo Terraform; quando for um bucket externo preexistente, o workflow apenas o utiliza como backend remoto sem tentar recriá-lo.
 
-Se `TF_STATE_BUCKET` não for informado, o script deriva automaticamente o nome do bucket compartilhado a partir do cluster, da conta AWS e da região. Se necessário, ele faz bootstrap com state local e migra o state para esse backend remoto S3.
+Se `TF_STATE_BUCKET` não for informado, o script deriva automaticamente o nome do bucket compartilhado a partir de `shared_infra_name`/`cluster_name`, da conta AWS e da região. Se necessário, ele faz bootstrap com state local e migra o state para esse backend remoto S3.
+
+Quando o bucket existe, mas o state remoto deste repositório ainda não, o script continua bloqueando recursos órfãos de EKS/API Gateway. A exceção é a rede compartilhada criada pelo `oficina-infra-db`: se a VPC `<shared_infra_name>-vpc` tiver o security group `<database_identifier>-sg` e não houver sinais de EKS/API Gateway deste repo na mesma VPC, o bootstrap segue e o Terraform reutiliza essa rede.
 
 O workflow:
 
@@ -497,7 +505,6 @@ Use o workflow `Destroy Lab` quando quiser desmontar a suíte inteira do laborat
 O `Destroy Lab` remove, quando existirem:
 
 - `auth-lambda` e `notificacao-lambda`, seus log groups, o log group legado `/aws/lambda/OficinaAuthLambdaNative` e o security group dedicado do `auth-lambda`
-- repositório ECR da suíte, mesmo com imagens
 - RDS PostgreSQL do laboratório, log groups, alarmes, parameter group, subnet group, security group e role de enhanced monitoring
 - secrets runtime compartilhados da suíte no Secrets Manager, como `oficina/lab/jwt`, `oficina/lab/database/app`, `oficina/lab/database/auth-lambda` e seus sub-secrets, quando `delete_runtime_secrets=true`
 - objetos de artefato das Lambdas no bucket S3 configurado, quando `delete_lambda_artifact_objects=true`
@@ -511,7 +518,7 @@ Depois disso, o workflow destrói, quando gerenciados por este repositório/stat
 - security groups dedicados, NLBs internos, listeners, target groups e attachments
 - API Gateway HTTP API, stage, integrações, rotas, JWT authorizers, VPC Link e access log group
 - stack de observabilidade AWS-native: log groups, metric filters, alarmes, dashboard, tópicos SNS, subscriptions e health checks do Route 53
-- repositório ECR criado por este ambiente, mesmo com imagens
+- repositório ECR gerenciado por este ambiente, mesmo com imagens
 - bucket S3 compartilhado do Terraform quando ele faz parte do state deste ambiente, mesmo com objetos/versionamento
 
 Durante o destroy, o script diferencia state local temporário criado pela própria migração do backend de arquivos locais avulsos. Isso evita prompts de migração no `terraform init` com `-input=false` e permite que uma segunda tentativa continue de forma determinística depois de uma falha parcial. Após migrar o state para local, o script esvazia explicitamente o bucket versionado, removendo versões, delete markers e multipart uploads pendentes antes do Terraform tentar apagar o bucket.
@@ -520,7 +527,7 @@ Para zerar custo de armazenamento do banco, o input `skip_final_db_snapshot` fic
 
 O input `delete_shared_state_bucket` controla a remoção do bucket S3 compartilhado de state ao final do destroy. Com o default `false`, o workflow preserva esse bucket quando ele é backend externo ou compartilhado por outros states da suíte. Quando `true`, ele apaga o bucket inteiro, incluindo versionamento e todos os states remotos armazenados nele.
 
-O workflow preserva recursos externos que o laboratório apenas reutiliza, como bucket de backend remoto fora do state e repositório ECR externo, salvo quando `delete_shared_state_bucket=true`.
+O workflow preserva recursos externos que o laboratório apenas reutiliza, como bucket de backend remoto fora do state, salvo quando `delete_shared_state_bucket=true`. Se o ECR configurado já existir fora do state, o script o importa para que passe a ser gerenciado por este ambiente antes do apply/destroy completo.
 
 ## Validações recomendadas
 

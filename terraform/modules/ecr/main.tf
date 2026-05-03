@@ -1,5 +1,4 @@
 resource "aws_ecr_repository" "app" {
-  count                = var.create_repository ? 1 : 0
   name                 = var.repository_name
   force_delete         = var.force_delete
   image_tag_mutability = "MUTABLE"
@@ -17,12 +16,7 @@ resource "aws_ecr_repository" "app" {
   }
 }
 
-data "aws_ecr_repository" "app" {
-  count = var.create_repository ? 0 : 1
-  name  = var.repository_name
-}
-
-locals {
-  resolved_repository_name = var.create_repository ? aws_ecr_repository.app[0].name : data.aws_ecr_repository.app[0].name
-  resolved_repository_url  = var.create_repository ? aws_ecr_repository.app[0].repository_url : data.aws_ecr_repository.app[0].repository_url
+moved {
+  from = aws_ecr_repository.app[0]
+  to   = aws_ecr_repository.app
 }

@@ -52,7 +52,6 @@ O cleanup prévio remove recursos que este repositório não gerencia diretament
 - `oficina-notificacao-lambda-lab`
 - log groups dessas Lambdas e o legado `/aws/lambda/OficinaAuthLambdaNative`
 - security group dedicado do `auth-lambda`
-- repositório ECR da suíte, mesmo com imagens
 - RDS `oficina-postgres-lab`
 - parameter group, subnet group, security group, role de monitoring, log groups e alarmes do banco
 - secrets runtime da suíte no Secrets Manager, incluindo `oficina/lab/database/auth-lambda` e seus sub-secrets, quando `delete_runtime_secrets=true`
@@ -76,14 +75,14 @@ Com isso, o teardown remove, quando os recursos estiverem no state deste ambient
 - security groups dedicados da VPC, do VPC Link e da `notificacao-lambda`
 - API Gateway HTTP API, stage, rotas, integrações, JWT authorizers, VPC Link e access log group
 - stack AWS-native de observabilidade: log groups, metric filters, alarmes, dashboard, tópicos SNS, subscriptions e health checks do Route 53
-- repositório ECR criado por este ambiente, mesmo com imagens
+- repositório ECR gerenciado por este ambiente, mesmo com imagens
 - bucket S3 compartilhado do Terraform quando ele pertence a este state, mesmo com objetos e versionamento
 
 O input `skip_final_db_snapshot` controla se o RDS será removido sem snapshot final. O default e `true`, alinhado ao objetivo de zerar custo quando o laboratório não estiver em uso.
 
 O input `delete_shared_state_bucket` controla a remoção do bucket S3 compartilhado de state ao final do destroy. Quando `true`, ele remove o bucket inteiro, incluindo versionamento e qualquer state remoto ainda armazenado nele.
 
-Se o laboratorio estiver reutilizando um bucket de backend remoto ou um repositorio ECR externos ao state, o workflow os preserva por design, salvo quando `delete_shared_state_bucket=true`.
+Se o laboratorio estiver reutilizando um bucket de backend remoto externo ao state, o workflow o preserva por design, salvo quando `delete_shared_state_bucket=true`. Se o ECR configurado já existir fora do state, o script o importa para que passe a ser gerenciado por este ambiente antes do apply/destroy completo.
 
 ## Autenticação AWS
 
@@ -173,6 +172,8 @@ Se o bucket ainda não existir, o script faz bootstrap com state local, cria o b
 
 Se o bucket já existir, o script o reutiliza normalmente. Quando o bucket já faz parte do state desse ambiente, ele continua sendo gerenciado pelo Terraform; quando for um bucket externo preexistente, o workflow apenas o usa como backend sem tentar recriá-lo.
 
-Se `TF_STATE_BUCKET` não for informado, o workflow deriva automaticamente o nome do bucket compartilhado a partir do cluster e da conta AWS, usa state local apenas durante o bootstrap e migra em seguida para backend remoto S3.
+Se `TF_STATE_BUCKET` não for informado, o workflow deriva automaticamente o nome do bucket compartilhado a partir de `shared_infra_name`/`cluster_name` e da conta AWS, usa state local apenas durante o bootstrap e migra em seguida para backend remoto S3.
+
+Quando o bucket já existe, mas o state remoto deste repo ainda não, o workflow permite reutilizar a rede do `oficina-infra-db` se encontrar a VPC `<shared_infra_name>-vpc` com o security group `<database_identifier>-sg` e sem sinais de EKS/API Gateway deste repo na mesma VPC.
 
 Se um `apply` falhar depois de criar recursos AWS, mas antes de persistir o state remoto, o proximo `Deploy Lab` pode bloquear para evitar duplicacao de recursos. Nesse caso, remova ou importe os recursos orfaos antes de tentar um novo deploy.
