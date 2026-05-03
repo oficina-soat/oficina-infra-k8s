@@ -53,6 +53,7 @@ data:
         Log_Level     error
         Daemon        off
         Parsers_File  parsers.conf
+        storage.path  /var/fluent-bit/state
 
     [INPUT]
         Name                tail
