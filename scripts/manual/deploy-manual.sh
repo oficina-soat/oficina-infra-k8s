@@ -213,6 +213,35 @@ render_app_overlay() {
     sed "s|OFICINA_AUTH_JWKS_URI_PLACEHOLDER|${escaped_auth_jwks_uri}|g"
 }
 
+cleanup_legacy_observability_resources() {
+  log "Removendo recursos legados de observabilidade no namespace ${APP_NAMESPACE}, se existirem"
+  kubectl delete \
+    daemonset/fluent-bit \
+    deployment/cwagent-prometheus \
+    serviceaccount/fluent-bit \
+    serviceaccount/cwagent-prometheus \
+    configmap/oficina-fluent-bit-config \
+    configmap/oficina-prometheus-cwagentconfig \
+    configmap/oficina-prometheus-config \
+    --namespace "${APP_NAMESPACE}" \
+    --ignore-not-found
+}
+
+wait_observability_rollout() {
+  if ! is_truthy "${OBSERVABILITY_ENABLED}"; then
+    return
+  fi
+
+  log "Reiniciando coletores de observabilidade para aplicar configmaps atualizados"
+  kubectl rollout restart daemonset/fluent-bit --namespace amazon-cloudwatch
+  kubectl rollout status daemonset/fluent-bit --namespace amazon-cloudwatch --timeout=180s
+
+  if is_truthy "${OBSERVABILITY_ENABLE_K8S_RESOURCE_METRICS}"; then
+    kubectl rollout restart deployment/cwagent-prometheus --namespace amazon-cloudwatch
+    kubectl rollout status deployment/cwagent-prometheus --namespace amazon-cloudwatch --timeout=180s
+  fi
+}
+
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   usage
   exit 0
@@ -282,6 +311,8 @@ fi
 
 log "Aplicando dependencias base do laboratorio"
 render_platform_overlay | kubectl apply -f -
+cleanup_legacy_observability_resources
+wait_observability_rollout
 
 kubectl rollout status deployment/mailhog --namespace "${APP_NAMESPACE}" --timeout=180s
 

@@ -280,6 +280,8 @@ spec:
         app.kubernetes.io/part-of: oficina
     spec:
       serviceAccountName: cwagent-prometheus
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
       nodeSelector:
         kubernetes.io/os: linux
       containers:
