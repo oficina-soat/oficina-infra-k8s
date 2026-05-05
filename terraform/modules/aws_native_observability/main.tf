@@ -99,12 +99,12 @@ resource "aws_cloudwatch_log_metric_filter" "os_status_duration_ms" {
 
   name           = "oficina-${var.environment}-os-status-duration-${lower(replace(each.key, "_", "-"))}"
   log_group_name = aws_cloudwatch_log_group.app[0].name
-  pattern        = "{ $.message = \"Transicao de ordem de servico concluida\" && $.ordem_servico_status_anterior = \"${each.value}\" && $.ordem_servico_status_duration_ms = * }"
+  pattern        = "{ $.message = \"Transicao de ordem de servico concluida\" && $.mdc.ordem_servico_status_anterior = \"${each.value}\" && $.mdc.ordem_servico_status_duration_ms = * }"
 
   metric_transformation {
     name      = local.status_duration_metric_names[each.key]
     namespace = local.metric_namespace
-    value     = "$.ordem_servico_status_duration_ms"
+    value     = "$.mdc.ordem_servico_status_duration_ms"
     unit      = "Milliseconds"
   }
 }
@@ -114,7 +114,7 @@ resource "aws_cloudwatch_log_metric_filter" "integration_failures_total" {
 
   name           = "oficina-${var.environment}-integration-failures-total"
   log_group_name = aws_cloudwatch_log_group.app[0].name
-  pattern        = "{ $.message = \"Falha em integracao externa\" && $.integration_name = * && $.integration_operation = * }"
+  pattern        = "{ $.message = \"Falha em integracao externa\" && $.mdc.integration_name = * && $.mdc.integration_operation = * }"
 
   metric_transformation {
     name          = "IntegrationFailuresTotal"
