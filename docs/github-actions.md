@@ -137,7 +137,8 @@ Variáveis opcionais:
 - `OTEL_LOGS_EXPORTER`: default `none`
 - `OBSERVABILITY_ENABLED`: default `true`; liga a stack AWS-native de observabilidade
 - `OBSERVABILITY_ENABLE_K8S_RESOURCE_METRICS`: default `true`; quando `false`, o deploy aplica `cwagent-prometheus` com `replicas=0`
-- `OBSERVABILITY_MANAGE_NODE_ROLE_POLICY_ATTACHMENT`: default `true`; anexa `CloudWatchAgentServerPolicy` na role dos nodes do EKS
+- `OBSERVABILITY_AWS_CREDENTIALS_SECRET_ENABLED`: default `true`; cria uma secret Kubernetes com as credenciais AWS do runner para os coletores publicarem no CloudWatch
+- `OBSERVABILITY_MANAGE_NODE_ROLE_POLICY_ATTACHMENT`: default `false`; use `true` apenas quando o runner puder executar `iam:AttachRolePolicy` na role dos nodes do EKS
 - `OBSERVABILITY_ALERT_EMAIL_ENDPOINTS`: lista JSON de emails inscritos nos tópicos SNS, por exemplo `["ops@example.com"]`
 
 Quando `OFICINA_APP_API_GATEWAY_JWT_AUTHORIZER_ENABLED=true`, o workflow passa a aplicar no `oficina-app` um JWT authorizer com issuer do gateway atual (ou override explicito), audience `["oficina-app"]` e scope `["oficina-app"]` por default. Nesse modo, o gateway protege a aplicação por default e deixa públicos apenas `/q/swagger-ui`, `/q/swagger-ui/`, `/q/swagger-ui/*`, `GET /q/health/live`, `GET /q/health/ready` e as rotas vigentes de magic link.

@@ -80,7 +80,7 @@ database_identifier    = "oficina-postgres-lab"
 # observability_enable_dashboard             = true
 # observability_enable_route53_healthchecks  = true
 # observability_enable_k8s_resource_metrics  = true
-# observability_manage_node_role_policy_attachment = true
+# observability_manage_node_role_policy_attachment = false
 # observability_alert_email_endpoints        = ["ops@example.com"]
 #
 # Exemplo para publicar a aplicacao principal por URL publica:

@@ -135,6 +135,10 @@ spec:
         - name: fluent-bit
           image: OBSERVABILITY_FLUENT_BIT_IMAGE_PLACEHOLDER
           imagePullPolicy: IfNotPresent
+          envFrom:
+            - secretRef:
+                name: oficina-observability-aws-credentials
+                optional: true
           resources:
             requests:
               cpu: 50m
@@ -288,6 +292,10 @@ spec:
         - name: cloudwatch-agent
           image: OBSERVABILITY_CWAGENT_IMAGE_PLACEHOLDER
           imagePullPolicy: IfNotPresent
+          envFrom:
+            - secretRef:
+                name: oficina-observability-aws-credentials
+                optional: true
           resources:
             requests:
               cpu: 50m

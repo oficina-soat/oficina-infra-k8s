@@ -414,8 +414,8 @@ variable "observability_enable_k8s_resource_metrics" {
 
 variable "observability_manage_node_role_policy_attachment" {
   type        = bool
-  description = "Quando true, o Terraform anexa CloudWatchAgentServerPolicy na IAM role dos nodes do EKS para permitir que aws-for-fluent-bit e cloudwatch-agent publiquem no CloudWatch."
-  default     = true
+  description = "Quando true, o Terraform tenta anexar CloudWatchAgentServerPolicy na IAM role dos nodes do EKS. Mantenha false quando o runner nao puder alterar IAM."
+  default     = false
 }
 
 variable "observability_alert_email_endpoints" {
