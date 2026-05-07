@@ -100,6 +100,7 @@ jobs:
       TF_VAR_observability_alert_email_endpoints: ${{ vars.OBSERVABILITY_ALERT_EMAIL_ENDPOINTS || '[]' }}
       OBSERVABILITY_ENABLED: ${{ vars.OBSERVABILITY_ENABLED || 'true' }}
       OBSERVABILITY_ENABLE_K8S_RESOURCE_METRICS: ${{ vars.OBSERVABILITY_ENABLE_K8S_RESOURCE_METRICS || 'true' }}
+      OBSERVABILITY_AWS_CREDENTIALS_SECRET_ENABLED: ${{ vars.OBSERVABILITY_AWS_CREDENTIALS_SECRET_ENABLED || 'true' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6

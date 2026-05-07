@@ -23,6 +23,8 @@ OBSERVABILITY_ENABLED="${OBSERVABILITY_ENABLED:-true}"
 OBSERVABILITY_APP_LOG_GROUP_NAME="${OFICINA_OBSERVABILITY_APP_LOG_GROUP_NAME}"
 OBSERVABILITY_PROMETHEUS_LOG_GROUP_NAME="${EKS_CLUSTER_NAME:+/aws/containerinsights/${EKS_CLUSTER_NAME}/prometheus}"
 OBSERVABILITY_ENABLE_K8S_RESOURCE_METRICS="${OBSERVABILITY_ENABLE_K8S_RESOURCE_METRICS:-true}"
+OBSERVABILITY_AWS_CREDENTIALS_SECRET_ENABLED="${OBSERVABILITY_AWS_CREDENTIALS_SECRET_ENABLED:-true}"
+OBSERVABILITY_AWS_CREDENTIALS_SECRET_NAME="${OBSERVABILITY_AWS_CREDENTIALS_SECRET_NAME:-oficina-observability-aws-credentials}"
 OBSERVABILITY_FLUENT_BIT_IMAGE="public.ecr.aws/aws-observability/aws-for-fluent-bit:2.34.3.20260423"
 OBSERVABILITY_CWAGENT_IMAGE="public.ecr.aws/cloudwatch-agent/cloudwatch-agent:1.300066.1b1374"
 DB_SECRET_NAME="${DB_SECRET_NAME:-${OFICINA_DB_K8S_SECRET_NAME}}"
@@ -49,6 +51,7 @@ Variaveis suportadas:
   API_GATEWAY_NAME       Opcional; default <EKS_CLUSTER_NAME>-http-api
   OBSERVABILITY_ENABLED                    true|false. Default: true
   OBSERVABILITY_ENABLE_K8S_RESOURCE_METRICS true|false. Default: true
+  OBSERVABILITY_AWS_CREDENTIALS_SECRET_ENABLED true|false. Default: true
 EOF
 }
 
@@ -213,6 +216,62 @@ render_app_overlay() {
     sed "s|OFICINA_AUTH_JWKS_URI_PLACEHOLDER|${escaped_auth_jwks_uri}|g"
 }
 
+cleanup_legacy_observability_resources() {
+  log "Removendo recursos legados de observabilidade no namespace ${APP_NAMESPACE}, se existirem"
+  kubectl delete \
+    daemonset/fluent-bit \
+    deployment/cwagent-prometheus \
+    serviceaccount/fluent-bit \
+    serviceaccount/cwagent-prometheus \
+    configmap/oficina-fluent-bit-config \
+    configmap/oficina-prometheus-cwagentconfig \
+    configmap/oficina-prometheus-config \
+    --namespace "${APP_NAMESPACE}" \
+    --ignore-not-found
+}
+
+prepare_observability_aws_credentials_secret() {
+  if ! is_truthy "${OBSERVABILITY_ENABLED}" || ! is_truthy "${OBSERVABILITY_AWS_CREDENTIALS_SECRET_ENABLED}"; then
+    return
+  fi
+
+  if [[ -z "${AWS_ACCESS_KEY_ID:-}" || -z "${AWS_SECRET_ACCESS_KEY:-}" ]]; then
+    log "Credenciais AWS nao estao em variaveis de ambiente; coletores usarao a cadeia padrao da AWS."
+    return
+  fi
+
+  local secret_args=()
+  secret_args+=(--from-literal="AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}")
+  secret_args+=(--from-literal="AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}")
+  secret_args+=(--from-literal="AWS_REGION=${AWS_REGION}")
+  secret_args+=(--from-literal="AWS_DEFAULT_REGION=${AWS_REGION}")
+
+  if [[ -n "${AWS_SESSION_TOKEN:-}" ]]; then
+    secret_args+=(--from-literal="AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}")
+  fi
+
+  log "Criando/atualizando secret ${OBSERVABILITY_AWS_CREDENTIALS_SECRET_NAME} para os coletores de observabilidade."
+  kubectl create secret generic "${OBSERVABILITY_AWS_CREDENTIALS_SECRET_NAME}" \
+    --namespace amazon-cloudwatch \
+    "${secret_args[@]}" \
+    --dry-run=client -o yaml | kubectl apply -f -
+}
+
+wait_observability_rollout() {
+  if ! is_truthy "${OBSERVABILITY_ENABLED}"; then
+    return
+  fi
+
+  log "Reiniciando coletores de observabilidade para aplicar configmaps atualizados"
+  kubectl rollout restart daemonset/fluent-bit --namespace amazon-cloudwatch
+  kubectl rollout status daemonset/fluent-bit --namespace amazon-cloudwatch --timeout=180s
+
+  if is_truthy "${OBSERVABILITY_ENABLE_K8S_RESOURCE_METRICS}"; then
+    kubectl rollout restart deployment/cwagent-prometheus --namespace amazon-cloudwatch
+    kubectl rollout status deployment/cwagent-prometheus --namespace amazon-cloudwatch --timeout=180s
+  fi
+}
+
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   usage
   exit 0
@@ -270,6 +329,8 @@ OBSERVABILITY_ENABLED=${OBSERVABILITY_ENABLED}
 OBSERVABILITY_APP_LOG_GROUP_NAME=${OBSERVABILITY_APP_LOG_GROUP_NAME}
 OBSERVABILITY_PROMETHEUS_LOG_GROUP_NAME=${OBSERVABILITY_PROMETHEUS_LOG_GROUP_NAME}
 OBSERVABILITY_ENABLE_K8S_RESOURCE_METRICS=${OBSERVABILITY_ENABLE_K8S_RESOURCE_METRICS}
+OBSERVABILITY_AWS_CREDENTIALS_SECRET_ENABLED=${OBSERVABILITY_AWS_CREDENTIALS_SECRET_ENABLED}
+OBSERVABILITY_AWS_CREDENTIALS_SECRET_NAME=${OBSERVABILITY_AWS_CREDENTIALS_SECRET_NAME}
 OBSERVABILITY_FLUENT_BIT_IMAGE=${OBSERVABILITY_FLUENT_BIT_IMAGE}
 OBSERVABILITY_CWAGENT_IMAGE=${OBSERVABILITY_CWAGENT_IMAGE}
 DB_SECRET_NAME=${DB_SECRET_NAME}
@@ -282,6 +343,9 @@ fi
 
 log "Aplicando dependencias base do laboratorio"
 render_platform_overlay | kubectl apply -f -
+prepare_observability_aws_credentials_secret
+cleanup_legacy_observability_resources
+wait_observability_rollout
 
 kubectl rollout status deployment/mailhog --namespace "${APP_NAMESPACE}" --timeout=180s
 

@@ -135,6 +135,10 @@ spec:
         - name: fluent-bit
           image: OBSERVABILITY_FLUENT_BIT_IMAGE_PLACEHOLDER
           imagePullPolicy: IfNotPresent
+          envFrom:
+            - secretRef:
+                name: oficina-observability-aws-credentials
+                optional: true
           resources:
             requests:
               cpu: 50m
@@ -280,12 +284,18 @@ spec:
         app.kubernetes.io/part-of: oficina
     spec:
       serviceAccountName: cwagent-prometheus
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
       nodeSelector:
         kubernetes.io/os: linux
       containers:
         - name: cloudwatch-agent
           image: OBSERVABILITY_CWAGENT_IMAGE_PLACEHOLDER
           imagePullPolicy: IfNotPresent
+          envFrom:
+            - secretRef:
+                name: oficina-observability-aws-credentials
+                optional: true
           resources:
             requests:
               cpu: 50m

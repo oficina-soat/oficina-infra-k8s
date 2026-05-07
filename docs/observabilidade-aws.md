@@ -54,9 +54,13 @@ Para deixar a observabilidade AWS-native ligada:
 
 - `OBSERVABILITY_ENABLED=true`
 - `OBSERVABILITY_ENABLE_K8S_RESOURCE_METRICS=true`
-- `OBSERVABILITY_MANAGE_NODE_ROLE_POLICY_ATTACHMENT=true` somente se o runner do deploy tiver permissao `iam:AttachRolePolicy`
+- `OBSERVABILITY_AWS_CREDENTIALS_SECRET_ENABLED=true`
 
-Por padrao, `OBSERVABILITY_MANAGE_NODE_ROLE_POLICY_ATTACHMENT=false` para nao bloquear o deploy em contas onde o laboratorio nao pode alterar IAM. Nesse caso, a role dos nodes do EKS precisa ja ter permissao equivalente a `CloudWatchAgentServerPolicy` para que `aws-for-fluent-bit` e `cloudwatch-agent` consigam publicar logs e metricas.
+Por padrao, `OBSERVABILITY_AWS_CREDENTIALS_SECRET_ENABLED=true`. O deploy cria a secret Kubernetes `amazon-cloudwatch/oficina-observability-aws-credentials` com as credenciais AWS do runner para que `aws-for-fluent-bit` e `cloudwatch-agent` consigam publicar no CloudWatch mesmo quando a conta do laboratorio nao permite alterar IAM.
+
+Quando a role dos nodes ja tiver permissao equivalente a `CloudWatchAgentServerPolicy`, ou quando o runner puder executar `iam:AttachRolePolicy`, voce pode preferir `OBSERVABILITY_MANAGE_NODE_ROLE_POLICY_ATTACHMENT=true` e `OBSERVABILITY_AWS_CREDENTIALS_SECRET_ENABLED=false`.
+
+Se as credenciais do runner forem temporarias, rode novamente o deploy quando elas forem renovadas para atualizar a secret usada pelos coletores.
 
 Para reduzir custo recorrente sem mexer no resto da stack:
 
