@@ -160,6 +160,7 @@ resource "aws_apigatewayv2_stage" "this" {
         ip                      = "$context.identity.sourceIp"
         requestTime             = "$context.requestTime"
         httpMethod              = "$context.httpMethod"
+        path                    = "$context.path"
         routeKey                = "$context.routeKey"
         status                  = "$context.status"
         protocol                = "$context.protocol"

@@ -129,7 +129,7 @@ resource "aws_cloudwatch_log_metric_filter" "os_processing_failures_total" {
 
   name           = "oficina-${var.environment}-os-processing-failures-total"
   log_group_name = var.api_gateway_access_log_group_name
-  pattern        = "{ $.routeKey = \"*ordem-de-servico*\" && $.status >= 500 }"
+  pattern        = "{ $.path = \"*ordem-de-servico*\" && $.status = 5* }"
 
   metric_transformation {
     name          = "OsProcessingFailuresTotal"
