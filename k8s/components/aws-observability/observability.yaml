@@ -220,12 +220,21 @@ data:
             "emf_processor": {
               "metric_declaration": [
                 {
-                  "source_labels": ["namespace", "container"],
-                  "label_matcher": "^default;oficina-app$",
-                  "dimensions": [["ClusterName", "namespace", "container"]],
+                  "source_labels": ["ClusterName"],
+                  "label_matcher": "^.+$",
+                  "dimensions": [
+                    ["ClusterName"],
+                    ["ClusterName", "namespace"],
+                    ["ClusterName", "namespace", "pod"],
+                    ["ClusterName", "namespace", "pod", "container"]
+                  ],
                   "metric_selectors": [
                     "^container_cpu_usage_seconds_total$",
-                    "^container_memory_working_set_bytes$"
+                    "^container_cpu_cfs_throttled_seconds_total$",
+                    "^container_memory_working_set_bytes$",
+                    "^container_network_receive_bytes_total$",
+                    "^container_network_transmit_bytes_total$",
+                    "^container_fs_usage_bytes$"
                   ]
                 }
               ]

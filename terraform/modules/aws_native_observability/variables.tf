@@ -45,6 +45,12 @@ variable "api_gateway_stage_name" {
   default     = "$default"
 }
 
+variable "api_gateway_route_keys" {
+  type        = list(string)
+  description = "Route keys publicados no HTTP API para metricas e alarmes por rota."
+  default     = []
+}
+
 variable "api_gateway_access_log_group_name" {
   type        = string
   description = "Log group dos access logs do API Gateway."
@@ -132,6 +138,18 @@ variable "api_latency_critical_threshold_ms" {
   type        = number
   description = "Threshold critical do p95 de latencia da API, em milissegundos."
   default     = 3000
+}
+
+variable "api_5xx_warning_threshold" {
+  type        = number
+  description = "Quantidade de respostas 5xx no API Gateway para warning."
+  default     = 1
+}
+
+variable "api_5xx_critical_threshold" {
+  type        = number
+  description = "Quantidade de respostas 5xx no API Gateway para critical."
+  default     = 3
 }
 
 variable "integration_failures_warning_threshold" {

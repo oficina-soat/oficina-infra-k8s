@@ -322,6 +322,7 @@ module "api_gateway" {
   access_log_retention_in_days         = var.api_gateway_access_log_retention_in_days
   default_route_throttling_burst_limit = var.api_gateway_default_route_throttling_burst_limit
   default_route_throttling_rate_limit  = var.api_gateway_default_route_throttling_rate_limit
+  enable_detailed_metrics              = var.api_gateway_enable_detailed_metrics
   vpc_id                               = local.resolved_vpc_id
   vpc_link_subnet_ids                  = length(var.api_gateway_vpc_link_subnet_ids) > 0 ? var.api_gateway_vpc_link_subnet_ids : local.resolved_public_subnet_ids
   vpc_link_security_group_ids          = local.api_gateway_vpc_link_security_group_ids
@@ -356,6 +357,7 @@ module "aws_native_observability" {
   api_gateway_id                            = try(module.api_gateway[0].api_id, null)
   api_gateway_endpoint                      = try(module.api_gateway[0].api_endpoint, null)
   api_gateway_stage_name                    = var.api_gateway_stage_name
+  api_gateway_route_keys                    = var.create_api_gateway ? concat(module.api_gateway[0].http_route_keys, module.api_gateway[0].lambda_route_keys) : []
   api_gateway_access_log_group_name         = try(module.api_gateway[0].access_log_group_name, null)
   api_gateway_access_logs_enabled           = var.create_api_gateway && var.api_gateway_enable_access_logs
   app_log_group_name                        = local.observability_app_log_group_name
@@ -369,6 +371,8 @@ module "aws_native_observability" {
   alert_email_endpoints                     = var.observability_alert_email_endpoints
   api_latency_warning_threshold_ms          = var.observability_api_latency_warning_threshold_ms
   api_latency_critical_threshold_ms         = var.observability_api_latency_critical_threshold_ms
+  api_5xx_warning_threshold                 = var.observability_api_5xx_warning_threshold
+  api_5xx_critical_threshold                = var.observability_api_5xx_critical_threshold
   integration_failures_warning_threshold    = var.observability_integration_failures_warning_threshold
   integration_failures_critical_threshold   = var.observability_integration_failures_critical_threshold
   os_processing_failures_warning_threshold  = var.observability_os_processing_failures_warning_threshold

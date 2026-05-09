@@ -211,6 +211,7 @@ Variáveis principais:
 - `cluster_endpoint_public_access_cidrs`: CIDRs permitidos no endpoint público do EKS
 - `ecr_repository_name`: repositório ECR da aplicação. O ambiente `lab` sempre cria e gerencia esse repositório pelo Terraform
 - `create_api_gateway`: cria o HTTP API do laboratório. Padrão: `true`
+- `api_gateway_enable_detailed_metrics`: habilita métricas detalhadas por rota no HTTP API. Padrão: `true`
 - `api_gateway_http_routes`: rotas `HTTP_PROXY` para expor a aplicação principal ou outros backends HTTP
 - `api_gateway_lambda_routes`: rotas `AWS_PROXY` para expor Lambdas existentes
 - `api_gateway_vpc_link_subnet_ids`, `api_gateway_vpc_link_security_group_ids` e `api_gateway_create_vpc_link_security_group`: usados apenas quando uma rota HTTP precisar de integração privada via `VPC_LINK`
@@ -364,7 +365,9 @@ O repositório mantém duas camadas complementares de observabilidade:
 - métricas de negócio e técnicas expostas pelo app
 - probes Kubernetes em `GET /q/health/live` e `GET /q/health/ready`
 - env vars OTEL e `OFICINA_OBSERVABILITY_*` padronizadas no `ConfigMap`
-- dashboard, alarmes, healthchecks e log groups na AWS para o ambiente `lab`
+- dashboard com métricas negociais, latência agregada e por rota, 5xx, consumo k8s por pod/container, healthchecks e uptime
+- alarmes de latência agregada e por rota, 5xx, falhas de integração, falhas de processamento de OS e healthchecks
+- correlação entre access logs do gateway e logs JSON do backend por `X-Request-Id`/`request_id`
 
 Contratos e arquitetura:
 

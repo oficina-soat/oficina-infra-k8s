@@ -33,6 +33,12 @@ variable "default_route_throttling_rate_limit" {
   default     = 25
 }
 
+variable "enable_detailed_metrics" {
+  type        = bool
+  description = "Quando true, habilita metricas detalhadas por rota no stage do HTTP API."
+  default     = true
+}
+
 variable "vpc_id" {
   type        = string
   description = "VPC usada para criar o security group do VPC Link quando necessario."
@@ -67,6 +73,7 @@ variable "http_routes" {
     authorization_scopes = optional(list(string), [])
     connection_type      = optional(string, "INTERNET")
     timeout_milliseconds = optional(number, 30000)
+    request_parameters   = optional(map(string), {})
   }))
   description = "Mapa de rotas HTTP_PROXY. A chave do mapa deve ser o route key, por exemplo `ANY /app/{proxy+}`."
   default     = {}
@@ -91,6 +98,7 @@ variable "lambda_routes" {
     authorization_scopes   = optional(list(string), [])
     payload_format_version = optional(string, "2.0")
     timeout_milliseconds   = optional(number, 30000)
+    request_parameters     = optional(map(string), {})
   }))
   description = "Mapa de rotas AWS_PROXY para Lambdas. A chave do mapa deve ser o route key, por exemplo `POST /payments`."
   default     = {}

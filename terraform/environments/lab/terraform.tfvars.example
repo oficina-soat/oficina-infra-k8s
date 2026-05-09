@@ -45,6 +45,9 @@ database_identifier    = "oficina-postgres-lab"
 
 # O API Gateway HTTP API e criado por default, mas pode ficar sem rotas
 # ate que a aplicacao principal e/ou os Lambdas existam.
+# As metricas detalhadas por rota ficam ligadas por default para alimentar
+# dashboard e alarmes de latencia por API.
+# api_gateway_enable_detailed_metrics = true
 #
 # Por default, o ambiente lab publica o oficina-app na raiz do HTTP API:
 # - ANY /

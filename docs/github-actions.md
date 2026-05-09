@@ -141,6 +141,8 @@ Variáveis opcionais:
 - `OBSERVABILITY_MANAGE_NODE_ROLE_POLICY_ATTACHMENT`: default `false`; use `true` apenas quando o runner puder executar `iam:AttachRolePolicy` na role dos nodes do EKS
 - `OBSERVABILITY_ALERT_EMAIL_ENDPOINTS`: lista JSON de emails inscritos nos tópicos SNS, por exemplo `["ops@example.com"]`
 
+O API Gateway mantém métricas detalhadas por rota habilitadas por default para alimentar os alarmes `api-route-<hash>-latency-*` e o dashboard de latência p95 por rota. O gateway também injeta `X-Request-Id` com o `$context.requestId`, que o `oficina-app` registra como `request_id` nos logs JSON.
+
 Quando `OFICINA_APP_API_GATEWAY_JWT_AUTHORIZER_ENABLED=true`, o workflow passa a aplicar no `oficina-app` um JWT authorizer com issuer do gateway atual (ou override explicito), audience `["oficina-app"]` e scope `["oficina-app"]` por default. Nesse modo, o gateway protege a aplicação por default e deixa públicos apenas `/q/swagger-ui`, `/q/swagger-ui/`, `/q/swagger-ui/*`, `GET /q/health/live`, `GET /q/health/ready` e as rotas vigentes de magic link.
 - `TERRAFORM_SHARED_DATA_BUCKET_NAME`
 - `TF_STATE_BUCKET`
