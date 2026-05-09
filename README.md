@@ -406,6 +406,8 @@ Para acesso local:
 ./scripts/manual/start-port-forwards.sh
 ```
 
+Por padrão, o script usa `EKS_CLUSTER_NAME=eks-lab` e `UPDATE_KUBECONFIG=auto`, atualizando o kubeconfig quando o endpoint local estiver diferente do endpoint ativo do EKS.
+
 ## Deploy com GitHub Actions
 
 O repositório mantém três workflows para o ambiente de laboratório:
