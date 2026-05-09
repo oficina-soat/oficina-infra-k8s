@@ -15,6 +15,7 @@ locals {
   warning_alarm_actions    = var.enabled ? [aws_sns_topic.warning[0].arn] : []
   critical_alarm_actions   = var.enabled ? [aws_sns_topic.critical[0].arn] : []
   metric_namespace         = "${var.metric_namespace}/${var.environment}"
+  api_gateway_route_keys   = sort(distinct(var.api_gateway_route_keys))
   status_duration_states = {
     RECEBIDA             = "RECEBIDA"
     EM_DIAGNOSTICO       = "EM_DIAGNOSTICO"
@@ -148,6 +149,7 @@ resource "aws_route53_health_check" "live" {
   resource_path     = local.live_healthcheck_path
   request_interval  = 30
   failure_threshold = 3
+  measure_latency   = true
 
   tags = merge(var.tags, {
     Name     = "oficina-${var.environment}-live"
@@ -164,6 +166,7 @@ resource "aws_route53_health_check" "ready" {
   resource_path     = local.ready_healthcheck_path
   request_interval  = 30
   failure_threshold = 3
+  measure_latency   = true
 
   tags = merge(var.tags, {
     Name     = "oficina-${var.environment}-ready"
@@ -253,6 +256,104 @@ resource "aws_cloudwatch_metric_alarm" "api_latency_critical" {
   namespace           = "AWS/ApiGateway"
   period              = 300
   extended_statistic  = "p95"
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    ApiId = var.api_gateway_id
+    Stage = var.api_gateway_stage_name
+  }
+
+  alarm_actions = local.critical_alarm_actions
+  ok_actions    = local.critical_alarm_actions
+  tags          = var.tags
+}
+
+resource "aws_cloudwatch_metric_alarm" "api_route_latency_warning" {
+  for_each = local.api_gateway_latency_alarms_enabled ? toset(local.api_gateway_route_keys) : toset([])
+
+  alarm_name          = "oficina-${var.environment}-api-route-${substr(md5(each.key), 0, 8)}-latency-warning"
+  alarm_description   = "Warning: p95 de latencia da rota ${each.key} acima do limite."
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  threshold           = var.api_latency_warning_threshold_ms
+  metric_name         = "Latency"
+  namespace           = "AWS/ApiGateway"
+  period              = 300
+  extended_statistic  = "p95"
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    ApiId = var.api_gateway_id
+    Stage = var.api_gateway_stage_name
+    Route = each.key
+  }
+
+  alarm_actions = local.warning_alarm_actions
+  ok_actions    = local.warning_alarm_actions
+  tags          = var.tags
+}
+
+resource "aws_cloudwatch_metric_alarm" "api_route_latency_critical" {
+  for_each = local.api_gateway_latency_alarms_enabled ? toset(local.api_gateway_route_keys) : toset([])
+
+  alarm_name          = "oficina-${var.environment}-api-route-${substr(md5(each.key), 0, 8)}-latency-critical"
+  alarm_description   = "Critical: p95 de latencia da rota ${each.key} acima do limite severo."
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  threshold           = var.api_latency_critical_threshold_ms
+  metric_name         = "Latency"
+  namespace           = "AWS/ApiGateway"
+  period              = 300
+  extended_statistic  = "p95"
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    ApiId = var.api_gateway_id
+    Stage = var.api_gateway_stage_name
+    Route = each.key
+  }
+
+  alarm_actions = local.critical_alarm_actions
+  ok_actions    = local.critical_alarm_actions
+  tags          = var.tags
+}
+
+resource "aws_cloudwatch_metric_alarm" "api_5xx_warning" {
+  count = local.api_gateway_latency_alarms_enabled ? 1 : 0
+
+  alarm_name          = "oficina-${var.environment}-api-5xx-warning"
+  alarm_description   = "Warning: respostas 5xx detectadas no API Gateway."
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  evaluation_periods  = 1
+  threshold           = var.api_5xx_warning_threshold
+  metric_name         = "5xx"
+  namespace           = "AWS/ApiGateway"
+  period              = var.alarm_period_seconds
+  statistic           = "Sum"
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    ApiId = var.api_gateway_id
+    Stage = var.api_gateway_stage_name
+  }
+
+  alarm_actions = local.warning_alarm_actions
+  ok_actions    = local.warning_alarm_actions
+  tags          = var.tags
+}
+
+resource "aws_cloudwatch_metric_alarm" "api_5xx_critical" {
+  count = local.api_gateway_latency_alarms_enabled ? 1 : 0
+
+  alarm_name          = "oficina-${var.environment}-api-5xx-critical"
+  alarm_description   = "Critical: volume alto de respostas 5xx no API Gateway."
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  evaluation_periods  = 1
+  threshold           = var.api_5xx_critical_threshold
+  metric_name         = "5xx"
+  namespace           = "AWS/ApiGateway"
+  period              = var.alarm_period_seconds
+  statistic           = "Sum"
   treat_missing_data  = "notBreaching"
 
   dimensions = {
@@ -412,8 +513,8 @@ resource "aws_cloudwatch_dashboard" "this" {
           }
         }
       ],
-      local.api_gateway_latency_alarms_enabled ? [
-        {
+      [
+        for enabled in [local.api_gateway_latency_alarms_enabled] : {
           type   = "metric"
           x      = 12
           y      = 6
@@ -427,38 +528,110 @@ resource "aws_cloudwatch_dashboard" "this" {
             stacked = false
             metrics = [
               ["AWS/ApiGateway", "Latency", "ApiId", var.api_gateway_id, "Stage", var.api_gateway_stage_name, { label = "p95", stat = "p95" }],
-              [".", "Latency", ".", ".", ".", ".", { label = "Media", stat = "Average" }]
+              [".", "Latency", ".", ".", ".", ".", { label = "Media", stat = "Average" }],
+              [".", "5xx", ".", ".", ".", ".", { label = "5xx", stat = "Sum", yAxis = "right" }]
             ]
           }
-        }
-      ] : [],
-      var.enable_k8s_resource_metrics ? [
-        {
+        } if enabled
+      ],
+      [
+        for enabled in [local.api_gateway_latency_alarms_enabled && length(local.api_gateway_route_keys) > 0] : {
           type   = "metric"
           x      = 0
           y      = 12
-          width  = 12
+          width  = 24
           height = 6
           properties = {
-            title   = "Consumo de recursos k8s do oficina-app"
+            title   = "Latencia p95 por rota da API"
             region  = var.region
-            period  = 60
+            period  = 300
             view    = "timeSeries"
             stacked = false
             metrics = [
-              ["ContainerInsights/Prometheus", "container_cpu_usage_seconds_total", "ClusterName", var.cluster_name, "namespace", "default", "container", "oficina-app", { id = "m1", stat = "Sum", visible = false }],
-              [{ expression = "(m1/60)*1000", id = "e1", label = "CPU (mCPU)" }],
-              ["ContainerInsights/Prometheus", "container_memory_working_set_bytes", "ClusterName", var.cluster_name, "namespace", "default", "container", "oficina-app", { id = "m2", stat = "Average", visible = false }],
-              [{ expression = "m2/1048576", id = "e2", label = "Memoria (MiB)", yAxis = "right" }]
+              for route_key in local.api_gateway_route_keys :
+              ["AWS/ApiGateway", "Latency", "ApiId", var.api_gateway_id, "Stage", var.api_gateway_stage_name, "Route", route_key, { label = route_key, stat = "p95" }]
             ]
           }
-        }
-      ] : [],
-      local.api_gateway_healthchecks_enabled ? [
-        {
+        } if enabled
+      ],
+      flatten([
+        for enabled in [var.enable_k8s_resource_metrics] : [
+          {
+            type   = "metric"
+            x      = 0
+            y      = 18
+            width  = 12
+            height = 6
+            properties = {
+              title   = "CPU k8s por container"
+              region  = var.region
+              period  = 60
+              view    = "timeSeries"
+              stacked = false
+              metrics = [
+                [{ expression = "SORT(SEARCH('{ContainerInsights/Prometheus,ClusterName,namespace,pod,container} MetricName=\"container_cpu_usage_seconds_total\" ClusterName=\"${var.cluster_name}\"', 'Sum', 60), SUM, DESC, 20)", id = "cpu", label = "Top 20 containers por CPU" }]
+              ]
+            }
+          },
+          {
+            type   = "metric"
+            x      = 12
+            y      = 18
+            width  = 12
+            height = 6
+            properties = {
+              title   = "Memoria k8s por container"
+              region  = var.region
+              period  = 60
+              view    = "timeSeries"
+              stacked = false
+              metrics = [
+                [{ expression = "SORT(SEARCH('{ContainerInsights/Prometheus,ClusterName,namespace,pod,container} MetricName=\"container_memory_working_set_bytes\" ClusterName=\"${var.cluster_name}\"', 'Average', 60), AVG, DESC, 20)", id = "mem", label = "Top 20 containers por memoria" }]
+              ]
+            }
+          },
+          {
+            type   = "metric"
+            x      = 0
+            y      = 24
+            width  = 12
+            height = 6
+            properties = {
+              title   = "Rede k8s por pod"
+              region  = var.region
+              period  = 60
+              view    = "timeSeries"
+              stacked = false
+              metrics = [
+                [{ expression = "SORT(SEARCH('{ContainerInsights/Prometheus,ClusterName,namespace,pod} MetricName=\"container_network_receive_bytes_total\" ClusterName=\"${var.cluster_name}\"', 'Sum', 60), SUM, DESC, 10)", id = "rx", label = "Recebido" }],
+                [{ expression = "SORT(SEARCH('{ContainerInsights/Prometheus,ClusterName,namespace,pod} MetricName=\"container_network_transmit_bytes_total\" ClusterName=\"${var.cluster_name}\"', 'Sum', 60), SUM, DESC, 10)", id = "tx", label = "Transmitido" }]
+              ]
+            }
+          },
+          {
+            type   = "metric"
+            x      = 12
+            y      = 24
+            width  = 12
+            height = 6
+            properties = {
+              title   = "Filesystem k8s por container"
+              region  = var.region
+              period  = 60
+              view    = "timeSeries"
+              stacked = false
+              metrics = [
+                [{ expression = "SORT(SEARCH('{ContainerInsights/Prometheus,ClusterName,namespace,pod,container} MetricName=\"container_fs_usage_bytes\" ClusterName=\"${var.cluster_name}\"', 'Average', 60), AVG, DESC, 20)", id = "fs", label = "Top 20 containers por disco" }]
+              ]
+            }
+          }
+        ] if enabled
+      ]),
+      [
+        for enabled in [local.api_gateway_healthchecks_enabled] : {
           type   = "metric"
           x      = 12
-          y      = 12
+          y      = 30
           width  = 12
           height = 6
           properties = {
@@ -473,8 +646,8 @@ resource "aws_cloudwatch_dashboard" "this" {
               [".", "HealthCheckStatus", ".", aws_route53_health_check.ready[0].id, { label = "Ready" }]
             ]
           }
-        }
-      ] : []
+        } if enabled
+      ]
     )
   })
 }

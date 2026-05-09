@@ -263,6 +263,12 @@ variable "api_gateway_default_route_throttling_rate_limit" {
   default     = 25
 }
 
+variable "api_gateway_enable_detailed_metrics" {
+  type        = bool
+  description = "Quando true, habilita metricas detalhadas por rota no HTTP API."
+  default     = true
+}
+
 variable "api_gateway_vpc_link_subnet_ids" {
   type        = list(string)
   description = "Subnets usadas pelo VPC Link quando houver rotas privadas. Se vazio, usa as subnets publicas da VPC do laboratorio."
@@ -408,7 +414,7 @@ variable "observability_enable_route53_healthchecks" {
 
 variable "observability_enable_k8s_resource_metrics" {
   type        = bool
-  description = "Quando true, habilita a coleta minima de CPU e memoria do oficina-app via CloudWatch agent."
+  description = "Quando true, habilita a coleta de consumo de recursos dos pods e containers do cluster via CloudWatch agent."
   default     = true
 }
 
@@ -454,6 +460,18 @@ variable "observability_api_latency_critical_threshold_ms" {
   default     = 3000
 }
 
+variable "observability_api_5xx_warning_threshold" {
+  type        = number
+  description = "Quantidade de respostas 5xx no API Gateway para warning."
+  default     = 1
+}
+
+variable "observability_api_5xx_critical_threshold" {
+  type        = number
+  description = "Quantidade de respostas 5xx no API Gateway para critical."
+  default     = 3
+}
+
 variable "observability_integration_failures_warning_threshold" {
   type        = number
   description = "Quantidade de falhas de integracao no periodo para warning."
@@ -493,6 +511,7 @@ variable "api_gateway_http_routes" {
     authorization_scopes = optional(list(string), [])
     connection_type      = optional(string, "INTERNET")
     timeout_milliseconds = optional(number, 30000)
+    request_parameters   = optional(map(string), {})
   }))
   description = "Rotas HTTP_PROXY do API Gateway. Permite, por exemplo, publicar a aplicacao principal atras do gateway sem depender dela no apply quando o mapa estiver vazio."
   default     = {}
@@ -517,6 +536,7 @@ variable "api_gateway_lambda_routes" {
     authorization_scopes   = optional(list(string), [])
     payload_format_version = optional(string, "2.0")
     timeout_milliseconds   = optional(number, 30000)
+    request_parameters     = optional(map(string), {})
   }))
   description = "Rotas AWS_PROXY para Lambdas. Quando `function_name` for informado, o Terraform tambem cria a permissao de invocacao para o API Gateway."
   default     = {}

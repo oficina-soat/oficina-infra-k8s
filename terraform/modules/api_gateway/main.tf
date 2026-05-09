@@ -1,6 +1,9 @@
 locals {
   http_routes   = var.http_routes
   lambda_routes = var.lambda_routes
+  correlation_request_parameters = {
+    "overwrite:header.X-Request-Id" = "$context.requestId"
+  }
   uses_vpc_link = length([
     for route in values(local.http_routes) : route
     if upper(route.connection_type) == "VPC_LINK"
@@ -90,6 +93,7 @@ resource "aws_apigatewayv2_integration" "http" {
   connection_type      = upper(each.value.connection_type)
   connection_id        = upper(each.value.connection_type) == "VPC_LINK" ? aws_apigatewayv2_vpc_link.this[0].id : null
   timeout_milliseconds = each.value.timeout_milliseconds
+  request_parameters   = merge(local.correlation_request_parameters, each.value.request_parameters)
   description          = "Backend HTTP da rota ${each.key}"
 }
 
@@ -113,6 +117,7 @@ resource "aws_apigatewayv2_integration" "lambda" {
   integration_uri        = each.value.invoke_arn
   payload_format_version = each.value.payload_format_version
   timeout_milliseconds   = each.value.timeout_milliseconds
+  request_parameters     = merge(local.correlation_request_parameters, each.value.request_parameters)
   description            = "Backend Lambda da rota ${each.key}"
 }
 
@@ -146,8 +151,9 @@ resource "aws_apigatewayv2_stage" "this" {
   auto_deploy = true
 
   default_route_settings {
-    throttling_burst_limit = var.default_route_throttling_burst_limit
-    throttling_rate_limit  = var.default_route_throttling_rate_limit
+    detailed_metrics_enabled = var.enable_detailed_metrics
+    throttling_burst_limit   = var.default_route_throttling_burst_limit
+    throttling_rate_limit    = var.default_route_throttling_rate_limit
   }
 
   dynamic "access_log_settings" {
@@ -157,6 +163,7 @@ resource "aws_apigatewayv2_stage" "this" {
       destination_arn = aws_cloudwatch_log_group.this[0].arn
       format = jsonencode({
         requestId               = "$context.requestId"
+        correlationId           = "$context.requestId"
         ip                      = "$context.identity.sourceIp"
         requestTime             = "$context.requestTime"
         httpMethod              = "$context.httpMethod"
