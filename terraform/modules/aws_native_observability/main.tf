@@ -601,13 +601,20 @@ resource "aws_cloudwatch_dashboard" "technical" {
             period  = 300
             view    = "timeSeries"
             stacked = false
-            metrics = flatten([
-              for function_name in local.lambda_function_names : [
-                ["AWS/Lambda", "Invocations", "FunctionName", function_name, { label = "${function_name} invocacoes", stat = "Sum" }],
-                [".", "Errors", ".", function_name, { label = "${function_name} erros", stat = "Sum", yAxis = "right" }],
+            metrics = concat(
+              [
+                for function_name in local.lambda_function_names :
+                ["AWS/Lambda", "Invocations", "FunctionName", function_name, { label = "${function_name} invocacoes", stat = "Sum" }]
+              ],
+              [
+                for function_name in local.lambda_function_names :
+                [".", "Errors", ".", function_name, { label = "${function_name} erros", stat = "Sum", yAxis = "right" }]
+              ],
+              [
+                for function_name in local.lambda_function_names :
                 [".", "Throttles", ".", function_name, { label = "${function_name} throttles", stat = "Sum", yAxis = "right" }]
               ]
-            ])
+            )
           }
         } if enabled
       ],
