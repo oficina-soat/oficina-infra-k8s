@@ -365,7 +365,7 @@ O repositório mantém duas camadas complementares de observabilidade:
 - métricas de negócio e técnicas expostas pelo app
 - probes Kubernetes em `GET /q/health/live` e `GET /q/health/ready`
 - env vars OTEL e `OFICINA_OBSERVABILITY_*` padronizadas no `ConfigMap`
-- dashboard com métricas negociais, latência agregada e por rota, 5xx, consumo k8s por pod/container, healthchecks e uptime
+- dashboards separados para métricas negociais e técnicas, incluindo latência agregada e por rota, 5xx, consumo k8s por pod/container, healthchecks e uptime
 - alarmes de latência agregada e por rota, 5xx, falhas de integração, falhas de processamento de OS e healthchecks
 - correlação entre access logs do gateway e logs JSON do backend por `X-Request-Id`/`request_id`
 
@@ -529,7 +529,7 @@ Depois disso, o workflow destrói, quando gerenciados por este repositório/stat
 - cluster EKS, managed node group, access entry e access policy association
 - security groups dedicados, NLBs internos, listeners, target groups e attachments
 - API Gateway HTTP API, stage, integrações, rotas, JWT authorizers, VPC Link e access log group
-- stack de observabilidade AWS-native: log groups, metric filters, alarmes, dashboard, tópicos SNS, subscriptions e health checks do Route 53
+- stack de observabilidade AWS-native: log groups, metric filters, alarmes, dashboards, tópicos SNS, subscriptions e health checks do Route 53
 - repositório ECR gerenciado por este ambiente, mesmo com imagens
 - bucket S3 compartilhado do Terraform quando ele faz parte do state deste ambiente, mesmo com objetos/versionamento
 

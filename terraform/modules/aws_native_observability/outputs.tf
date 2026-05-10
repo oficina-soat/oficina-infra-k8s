@@ -10,6 +10,10 @@ output "dashboard_name" {
   value = try(aws_cloudwatch_dashboard.this[0].dashboard_name, null)
 }
 
+output "technical_dashboard_name" {
+  value = try(aws_cloudwatch_dashboard.technical[0].dashboard_name, null)
+}
+
 output "warning_topic_arn" {
   value = try(aws_sns_topic.warning[0].arn, null)
 }

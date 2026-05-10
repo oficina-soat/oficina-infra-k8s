@@ -91,7 +91,7 @@ Com isso, o teardown remove, quando os recursos estiverem no state deste ambient
 - NLBs internos do `oficina-app` e do SMTP do MailHog, listeners, target groups e attachments
 - security groups dedicados da VPC, do VPC Link e da `notificacao-lambda`
 - API Gateway HTTP API, stage, rotas, integrações, JWT authorizers, VPC Link e access log group
-- stack AWS-native de observabilidade: log groups, metric filters, alarmes, dashboard, tópicos SNS, subscriptions e health checks do Route 53
+- stack AWS-native de observabilidade: log groups, metric filters, alarmes, dashboards, tópicos SNS, subscriptions e health checks do Route 53
 - repositório ECR gerenciado por este ambiente, mesmo com imagens
 - bucket S3 compartilhado do Terraform quando ele pertence a este state, mesmo com objetos e versionamento
 
