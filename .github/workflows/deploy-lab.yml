@@ -95,6 +95,7 @@ jobs:
       TF_VAR_terraform_shared_data_bucket_name: ${{ vars.TERRAFORM_SHARED_DATA_BUCKET_NAME || vars.TF_STATE_BUCKET }}
       TF_VAR_observability_enabled: ${{ vars.OBSERVABILITY_ENABLED || 'true' }}
       TF_VAR_observability_enable_k8s_resource_metrics: ${{ vars.OBSERVABILITY_ENABLE_K8S_RESOURCE_METRICS || 'true' }}
+      TF_VAR_observability_lambda_function_names: ${{ vars.OBSERVABILITY_LAMBDA_FUNCTION_NAMES || '["oficina-auth-lambda-lab","oficina-notificacao-lambda-lab"]' }}
       TF_VAR_observability_manage_node_role_policy_attachment: ${{ vars.OBSERVABILITY_MANAGE_NODE_ROLE_POLICY_ATTACHMENT || 'false' }}
       TF_VAR_observability_alert_email_endpoints: ${{ vars.OBSERVABILITY_ALERT_EMAIL_ENDPOINTS || '[]' }}
       OBSERVABILITY_ENABLED: ${{ vars.OBSERVABILITY_ENABLED || 'true' }}

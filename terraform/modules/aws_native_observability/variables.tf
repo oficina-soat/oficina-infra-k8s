@@ -104,6 +104,12 @@ variable "enable_k8s_resource_metrics" {
   default     = true
 }
 
+variable "lambda_function_names" {
+  type        = list(string)
+  description = "Nomes das funcoes Lambda que devem aparecer no dashboard tecnico."
+  default     = []
+}
+
 variable "enable_route53_healthchecks" {
   type        = bool
   description = "Quando true, cria health checks Route 53 para live e ready."

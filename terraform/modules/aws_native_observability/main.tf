@@ -30,6 +30,9 @@ locals {
     EM_EXECUCAO          = "OsStatusDurationMsEmExecucao"
     FINALIZADA           = "OsStatusDurationMsFinalizada"
   }
+  lambda_function_names    = sort(distinct([for function_name in var.lambda_function_names : trimspace(function_name) if trimspace(function_name) != ""]))
+  k8s_dashboard_start_y    = length(local.lambda_function_names) > 0 ? 18 : 12
+  k8s_dashboard_second_row = local.k8s_dashboard_start_y + 6
 }
 
 resource "aws_cloudwatch_log_group" "app" {
@@ -585,74 +588,117 @@ resource "aws_cloudwatch_dashboard" "technical" {
           }
         } if enabled
       ],
+      [
+        for enabled in [length(local.lambda_function_names) > 0] : {
+          type   = "metric"
+          x      = 0
+          y      = 12
+          width  = 12
+          height = 6
+          properties = {
+            title   = "Lambdas - invocacoes e falhas"
+            region  = var.region
+            period  = 300
+            view    = "timeSeries"
+            stacked = false
+            metrics = flatten([
+              for function_name in local.lambda_function_names : [
+                ["AWS/Lambda", "Invocations", "FunctionName", function_name, { label = "${function_name} invocacoes", stat = "Sum" }],
+                [".", "Errors", ".", function_name, { label = "${function_name} erros", stat = "Sum", yAxis = "right" }],
+                [".", "Throttles", ".", function_name, { label = "${function_name} throttles", stat = "Sum", yAxis = "right" }]
+              ]
+            ])
+          }
+        } if enabled
+      ],
+      [
+        for enabled in [length(local.lambda_function_names) > 0] : {
+          type   = "metric"
+          x      = 12
+          y      = 12
+          width  = 12
+          height = 6
+          properties = {
+            title   = "Lambdas - duracao p95"
+            region  = var.region
+            period  = 300
+            view    = "timeSeries"
+            stacked = false
+            metrics = [
+              for function_name in local.lambda_function_names :
+              ["AWS/Lambda", "Duration", "FunctionName", function_name, { label = function_name, stat = "p95" }]
+            ]
+          }
+        } if enabled
+      ],
       flatten([
         for enabled in [var.enable_k8s_resource_metrics] : [
           {
             type   = "metric"
             x      = 0
-            y      = 12
+            y      = local.k8s_dashboard_start_y
             width  = 12
             height = 6
             properties = {
-              title   = "CPU k8s por container"
+              title   = "CPU k8s por servico"
               region  = var.region
               period  = 60
               view    = "timeSeries"
               stacked = false
               metrics = [
-                [{ expression = "SORT(SEARCH('{ContainerInsights/Prometheus,ClusterName,namespace,pod,container} MetricName=\"container_cpu_usage_seconds_total\" ClusterName=\"${var.cluster_name}\"', 'Sum', 60), SUM, DESC, 20)", id = "cpu", label = "Top 20 containers por CPU" }]
+                [{ expression = "SEARCH('{ContainerInsights/Prometheus,ClusterName,namespace,service} MetricName=\"container_cpu_usage_seconds_total\" ClusterName=\"${var.cluster_name}\"', 'Sum', 60)", id = "cpu", label = "CPU por servico" }]
               ]
             }
           },
           {
             type   = "metric"
             x      = 12
-            y      = 12
+            y      = local.k8s_dashboard_start_y
             width  = 12
             height = 6
             properties = {
-              title   = "Memoria k8s por container"
+              title   = "Memoria k8s por servico"
               region  = var.region
               period  = 60
               view    = "timeSeries"
               stacked = false
               metrics = [
-                [{ expression = "SORT(SEARCH('{ContainerInsights/Prometheus,ClusterName,namespace,pod,container} MetricName=\"container_memory_working_set_bytes\" ClusterName=\"${var.cluster_name}\"', 'Average', 60), AVG, DESC, 20)", id = "mem", label = "Top 20 containers por memoria" }]
+                [{ expression = "SEARCH('{ContainerInsights/Prometheus,ClusterName,namespace,service} MetricName=\"container_memory_working_set_bytes\" ClusterName=\"${var.cluster_name}\"', 'Average', 60)", id = "mem", label = "Memoria por servico" }]
               ]
             }
           },
           {
             type   = "metric"
             x      = 0
-            y      = 18
+            y      = local.k8s_dashboard_second_row
             width  = 12
             height = 6
             properties = {
-              title   = "Rede k8s por pod"
+              title   = "Rede k8s por servico"
               region  = var.region
               period  = 60
               view    = "timeSeries"
               stacked = false
               metrics = [
-                [{ expression = "SORT(SEARCH('{ContainerInsights/Prometheus,ClusterName,namespace,pod} MetricName=\"container_network_receive_bytes_total\" ClusterName=\"${var.cluster_name}\"', 'Sum', 60), SUM, DESC, 10)", id = "rx", label = "Recebido" }],
-                [{ expression = "SORT(SEARCH('{ContainerInsights/Prometheus,ClusterName,namespace,pod} MetricName=\"container_network_transmit_bytes_total\" ClusterName=\"${var.cluster_name}\"', 'Sum', 60), SUM, DESC, 10)", id = "tx", label = "Transmitido" }]
+                [{ expression = "SEARCH('{ContainerInsights/Prometheus,ClusterName,namespace,service} MetricName=\"container_network_receive_bytes_total\" ClusterName=\"${var.cluster_name}\"', 'Sum', 60)", id = "rx", label = "Recebido" }],
+                [{ expression = "SEARCH('{ContainerInsights/Prometheus,ClusterName,namespace,service} MetricName=\"container_network_transmit_bytes_total\" ClusterName=\"${var.cluster_name}\"', 'Sum', 60)", id = "tx", label = "Transmitido" }]
               ]
             }
           },
           {
             type   = "metric"
             x      = 12
-            y      = 18
+            y      = local.k8s_dashboard_second_row
             width  = 12
             height = 6
             properties = {
-              title   = "Filesystem k8s por container"
+              title   = "Filesystem k8s por servico"
               region  = var.region
               period  = 60
               view    = "timeSeries"
               stacked = false
               metrics = [
-                [{ expression = "SORT(SEARCH('{ContainerInsights/Prometheus,ClusterName,namespace,pod,container} MetricName=\"container_fs_usage_bytes\" ClusterName=\"${var.cluster_name}\"', 'Average', 60), AVG, DESC, 20)", id = "fs", label = "Top 20 containers por disco" }]
+                [{ expression = "SEARCH('{ContainerInsights/Prometheus,ClusterName,namespace,service} MetricName=\"container_fs_usage_bytes\" ClusterName=\"${var.cluster_name}\"', 'Average', 60)", id = "fs", label = "Disco por servico" }]
               ]
             }
           }

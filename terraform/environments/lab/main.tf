@@ -161,6 +161,18 @@ locals {
       }
     } : {}
   )
+  api_gateway_lambda_function_identifiers = [
+    for route in values(var.api_gateway_lambda_routes) :
+    trimspace(coalesce(try(route.function_name, null), "")) != "" ? trimspace(coalesce(try(route.function_name, null), "")) : trimspace(route.invoke_arn)
+  ]
+  api_gateway_lambda_function_names = [
+    for identifier in local.api_gateway_lambda_function_identifiers :
+    startswith(identifier, "arn:") ? regex("^arn:[^:]+:lambda:[^:]+:[^:]+:function:([^:]+)", identifier)[0] : identifier
+  ]
+  observability_lambda_function_names = sort(distinct(concat(
+    var.observability_lambda_function_names,
+    local.api_gateway_lambda_function_names,
+  )))
 }
 
 module "network" {
@@ -367,6 +379,7 @@ module "aws_native_observability" {
   metric_namespace                          = var.observability_metric_namespace
   enable_dashboard                          = var.observability_enable_dashboard
   enable_k8s_resource_metrics               = var.observability_enable_k8s_resource_metrics
+  lambda_function_names                     = local.observability_lambda_function_names
   enable_route53_healthchecks               = var.observability_enable_route53_healthchecks
   alert_email_endpoints                     = var.observability_alert_email_endpoints
   api_latency_warning_threshold_ms          = var.observability_api_latency_warning_threshold_ms
