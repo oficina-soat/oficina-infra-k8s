@@ -10,7 +10,7 @@ O projeto provisiona a base da nuvem e converge o cluster do laboratório com:
 - API Gateway HTTP API com logs e throttling, pronto para expor app HTTP e Lambdas de forma opcional
 - manifests Kubernetes organizados com `kustomize` em `base`, `components` e `overlays`
 - telemetria vendor-neutral preparada com logs JSON, OpenTelemetry e probes HTTP no `oficina-app`
-- workflow de GitHub Actions para validar `develop`, promover mudanças para `main` via PR e convergir a infraestrutura e os componentes base do cluster após merge em `main`
+- workflows de GitHub Actions separados para validar `develop` e abrir PR para `main`, e para convergir a infraestrutura e os componentes base do cluster após merge em `main`
 - workflow manual de GitHub Actions para desativar somente o EKS sem remover VPC, ECR, API Gateway e state remoto
 
 ## O que este projeto não cria
@@ -412,12 +412,13 @@ Por padrão, o script usa `EKS_CLUSTER_NAME=eks-lab` e `UPDATE_KUBECONFIG=auto`,
 
 O repositório mantém três workflows para o ambiente de laboratório:
 
+- [`.github/workflows/open-pr-to-main.yml`](.github/workflows/open-pr-to-main.yml): valida `develop` e abre ou atualiza o PR automático para `main`
 - [`.github/workflows/deploy-lab.yml`](.github/workflows/deploy-lab.yml): valida o repositório, aplica a infraestrutura Terraform e converge os componentes base do cluster no EKS
 - [`.github/workflows/destroy-lab.yml`](.github/workflows/destroy-lab.yml): remove a infraestrutura completa criada pelo repositório para zerar o custo recorrente do laboratório quando ele não estiver em uso
 
-O workflow `Deploy Lab` executa em pushes para `develop` e `main`. O job `validate` roda nas duas branches, mas o job de deploy só roda quando a ref é `main`. A execução manual por `workflow_dispatch` também deve ser feita a partir de `main`.
+O workflow `Open PR To Main` executa em pushes para `develop`. Ele valida formatação Terraform, inicialização/validação Terraform sem backend, renderização dos overlays Kubernetes e sintaxe dos scripts shell. Depois que a validação passa, ele abre ou atualiza um pull request para `main` quando houver diferença real de conteúdo entre as branches. Merges reversos de `main` para `develop` sem mudança de arquivos não geram novo PR.
 
-Em pushes para `develop`, depois que o job `validate` passa, o workflow abre automaticamente um pull request para `main` quando ainda não existir um PR aberto e houver diferença de conteúdo entre as branches. Merges reversos de `main` para `develop` sem mudança de arquivos não geram novo PR.
+O workflow `Deploy Lab` executa em pushes para `main` e por `workflow_dispatch`. O job `validate` roda antes do deploy, e a execução manual também deve ser feita a partir de `main`.
 
 No deploy em `main`, o workflow executa `scripts/actions/ci-deploy.sh`. Esse script aplica o Terraform, atualiza o kubeconfig do EKS e aplica sempre o overlay `k8s/overlays/lab-platform`, que inclui MailHog e observabilidade. O deploy da aplicação roda em modo automático: se `IMAGE_REF` for informado, se `IMAGE_TAG` existir no ECR ou se houver uma tag recente no ECR configurado, o script aplica `k8s/overlays/lab-app` e prepara os secrets de JWT e banco quando necessário; se não houver imagem disponível, ele mantém somente a plataforma.
 
@@ -495,7 +496,8 @@ O workflow:
 - inicializa e aplica o Terraform em `terraform/environments/lab`
 - faz bootstrap do backend S3 quando necessário e migra o state para o backend remoto
 - atualiza o kubeconfig do EKS e aplica a oficina com suas dependências Kubernetes, incluindo MailHog
-- em pushes para `develop`, abre automaticamente um pull request para `main` depois que as validações passam e existe diferença real de conteúdo
+
+O workflow `Open PR To Main` mantém a promoção `develop` -> `main` separada do deploy, seguindo o mesmo padrão usado no `oficina-app`.
 
 ## Operações manuais de Terraform
 
