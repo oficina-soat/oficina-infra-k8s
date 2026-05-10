@@ -138,3 +138,15 @@ jobs:
         env:
           K8S_DATABASE_ENV_FILE: ${{ secrets.K8S_DATABASE_ENV_FILE }}
         run: bash ./scripts/actions/ci-deploy.sh
+
+      - name: Trigger oficina-db deploy
+        continue-on-error: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.OFICINA_DB_WORKFLOW_TOKEN || github.token }}
+          OFICINA_DB_REPOSITORY: ${{ vars.OFICINA_DB_REPOSITORY || format('{0}/oficina-infra-db', github.repository_owner) }}
+          OFICINA_DB_WORKFLOW_REF: ${{ vars.OFICINA_DB_WORKFLOW_REF || 'main' }}
+        run: |
+          gh workflow run deploy-lab.yml \
+            --repo "${OFICINA_DB_REPOSITORY}" \
+            --ref "${OFICINA_DB_WORKFLOW_REF}"

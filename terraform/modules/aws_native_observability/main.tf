@@ -460,10 +460,12 @@ resource "aws_cloudwatch_dashboard" "this" {
             region  = var.region
             stat    = "Sum"
             period  = 86400
+            start   = "-P14D"
             view    = "timeSeries"
             stacked = false
             metrics = [
-              [local.metric_namespace, "OsCreatedTotal", { label = "Ordens criadas por dia" }]
+              [local.metric_namespace, "OsCreatedTotal", { id = "m1", visible = false }],
+              [{ expression = "FILL(m1, 0)", id = "e1", label = "Ordens criadas por dia" }]
             ]
           }
         },

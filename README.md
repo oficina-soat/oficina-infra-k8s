@@ -422,6 +422,8 @@ O workflow `Deploy Lab` executa em pushes para `main` e por `workflow_dispatch`.
 
 No deploy em `main`, o workflow executa `scripts/actions/ci-deploy.sh`. Esse script aplica o Terraform, atualiza o kubeconfig do EKS e aplica sempre o overlay `k8s/overlays/lab-platform`, que inclui MailHog e observabilidade. O deploy da aplicação roda em modo automático: se `IMAGE_REF` for informado, se `IMAGE_TAG` existir no ECR ou se houver uma tag recente no ECR configurado, o script aplica `k8s/overlays/lab-app` e prepara os secrets de JWT e banco quando necessário; se não houver imagem disponível, ele mantém somente a plataforma.
 
+Quando esse deploy termina com sucesso, o workflow dispara o `deploy-lab.yml` do repositório `oficina-infra-db` por `workflow_dispatch`. O disparo é assíncrono: este workflow não espera o deploy do banco finalizar e também não falha se o comando de disparo encontrar erro. Por default, o destino é `<owner>/oficina-infra-db` na ref `main`.
+
 Os jobs usam o GitHub Environment `lab` para centralizar `vars` e `secrets`.
 
 Os workflows também aceitam `organization secrets/variables` e `repository secrets/variables` com os mesmos nomes. O GitHub resolve isso por precedência: `environment` sobrescreve `repository`, que sobrescreve `organization`.
@@ -468,10 +470,13 @@ Valores opcionais no Environment:
 - `K8S_DATABASE_SECRET_ID`
 - `K8S_JWT_SECRET_ID`: default `oficina/lab/jwt`; usado para criar/reutilizar o par JWT compartilhado com o `oficina-auth-lambda`
 - `K8S_JWT_SECRET_KMS_KEY_ID`: KMS key opcional para criação do secret JWT
+- `OFICINA_DB_REPOSITORY`: repositório alvo para disparar o deploy do banco; default `<owner>/oficina-infra-db`
+- `OFICINA_DB_WORKFLOW_REF`: ref usada no `workflow_dispatch` do banco; default `main`
 
-Secret opcional:
+Secrets opcionais:
 
 - `K8S_DATABASE_ENV_FILE`: conteúdo `.env` usado para criar ou atualizar o secret Kubernetes `oficina-database-env`
+- `OFICINA_DB_WORKFLOW_TOKEN`: token usado para disparar o workflow do `oficina-infra-db` quando o `GITHUB_TOKEN` deste repositório não tiver acesso ao repo alvo
 
 O secret de banco deve informar `QUARKUS_DATASOURCE_REACTIVE_URL` ou conter dados suficientes para o deploy montar essa URL automaticamente. Formatos aceitos:
 
