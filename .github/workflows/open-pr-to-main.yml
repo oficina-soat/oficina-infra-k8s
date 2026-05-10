@@ -1,0 +1,151 @@
+name: Open PR To Main
+
+on:
+  push:
+    branches:
+      - develop
+
+concurrency:
+  group: open-pr-to-main-${{ github.ref_name }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  validate:
+    name: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      TF_CLI_ARGS: -no-color
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_wrapper: false
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v5
+
+      - name: Validate repository
+        shell: bash
+        run: |
+          terraform fmt -check -recursive terraform
+          terraform -chdir=terraform/environments/lab init -backend=false -input=false
+          terraform -chdir=terraform/environments/lab validate
+          kubectl kustomize k8s/overlays/lab-platform >/tmp/oficina-lab-platform-rendered.yaml
+          kubectl kustomize k8s/overlays/lab-app >/tmp/oficina-lab-app-rendered.yaml
+          kubectl kustomize k8s/overlays/lab >/tmp/oficina-lab-rendered.yaml
+          find scripts -type f -name '*.sh' -print0 | xargs -0 bash -n
+
+  open-pull-request-to-main:
+    needs: validate
+    name: open-pull-request-to-main
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Open or update pull request to main
+        shell: bash
+        env:
+          BASE_BRANCH: main
+          GH_TOKEN: ${{ github.token }}
+          HEAD_BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          find_existing_pr_number() {
+            local candidate_head=""
+            local pr_number=""
+
+            for candidate_head in "${GITHUB_REPOSITORY_OWNER}:${HEAD_BRANCH}" "${HEAD_BRANCH}"; do
+              pr_number="$(
+                gh pr list \
+                  --repo "${GITHUB_REPOSITORY}" \
+                  --base "${BASE_BRANCH}" \
+                  --head "${candidate_head}" \
+                  --state open \
+                  --json number \
+                  --jq '.[0].number // empty'
+              )"
+
+              if [[ -n "${pr_number}" ]]; then
+                printf '%s\n' "${pr_number}"
+                return
+              fi
+            done
+          }
+
+          git fetch origin "${BASE_BRANCH}" "${HEAD_BRANCH}"
+          head_ref="${GITHUB_REPOSITORY_OWNER}:${HEAD_BRANCH}"
+
+          if git merge-base "origin/${BASE_BRANCH}" "origin/${HEAD_BRANCH}" >/dev/null 2>&1; then
+            if git diff --quiet "origin/${BASE_BRANCH}...origin/${HEAD_BRANCH}" -- .; then
+              echo "Branch ${HEAD_BRANCH} nao possui diferencas de conteudo em relacao a ${BASE_BRANCH}; PR nao sera criado."
+              exit 0
+            fi
+          else
+            echo "Branches ${BASE_BRANCH} e ${HEAD_BRANCH} ainda nao possuem merge base; seguindo para a verificacao de PR existente."
+          fi
+
+          title="chore: promover ${HEAD_BRANCH} para ${BASE_BRANCH}"
+          body="$(printf '%s\n\n%s\n%s\n%s\n' \
+            "PR automatico preparado pelo workflow Open PR To Main apos as validacoes de infraestrutura passarem." \
+            "- Branch origem: ${HEAD_BRANCH}" \
+            "- Branch destino: ${BASE_BRANCH}" \
+            "- Commit validado: ${GITHUB_SHA}")"
+
+          existing_pr_number="$(find_existing_pr_number)"
+
+          if [[ -n "${existing_pr_number}" ]]; then
+            gh pr edit "${existing_pr_number}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --title "${title}" \
+              --body "${body}"
+            exit 0
+          fi
+
+          set +e
+          create_output="$(
+            gh pr create \
+              --repo "${GITHUB_REPOSITORY}" \
+              --base "${BASE_BRANCH}" \
+              --head "${head_ref}" \
+              --title "${title}" \
+              --body "${body}" \
+              2>&1
+          )"
+          create_status=$?
+          set -e
+
+          if [[ ${create_status} -eq 0 ]]; then
+            echo "${create_output}"
+            exit 0
+          fi
+
+          existing_pr_number="$(find_existing_pr_number)"
+
+          if [[ -n "${existing_pr_number}" ]]; then
+            gh pr edit "${existing_pr_number}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --title "${title}" \
+              --body "${body}"
+            exit 0
+          fi
+
+          if grep -q "A pull request already exists" <<<"${create_output}"; then
+            echo "Pull request ja existente para ${HEAD_BRANCH} -> ${BASE_BRANCH}."
+            exit 0
+          fi
+
+          echo "${create_output}" >&2
+          exit "${create_status}"

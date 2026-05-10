@@ -2,17 +2,32 @@
 
 O projeto mantém tres workflows para o ambiente `lab`:
 
+- `./.github/workflows/open-pr-to-main.yml`
 - `./.github/workflows/deploy-lab.yml`
-- `./.github/workflows/eks-deactivate-lab.yml`
 - `./.github/workflows/destroy-lab.yml`
+
+## Open PR To Main
+
+O workflow `Open PR To Main` valida o repositório em pushes para `develop` e, quando a validação passa, abre ou atualiza um pull request para `main`.
+
+Antes de criar ou atualizar o PR, ele verifica se há diferença real de conteúdo entre `develop` e `main`. Merges reversos de `main` para `develop` sem alteração de arquivos não geram novo PR.
+
+O job de validação executa:
+
+- `terraform fmt -check -recursive terraform`
+- `terraform init -backend=false` e `terraform validate` no ambiente `lab`
+- `kubectl kustomize k8s/overlays/lab-platform`
+- `kubectl kustomize k8s/overlays/lab-app`
+- `kubectl kustomize k8s/overlays/lab`
+- `find scripts -type f -name '*.sh' -print0 | xargs -0 bash -n`
 
 ## Deploy Lab
 
-O workflow `Deploy Lab` valida o repositório em `develop` e `main`. O deploy roda somente na branch `main`, aplicando a infraestrutura Terraform e, em seguida, os componentes base do cluster no laboratório. O `oficina-app` fica opt-in neste repositório.
+O workflow `Deploy Lab` valida o repositório em `main` e faz o deploy somente nessa branch, aplicando a infraestrutura Terraform e, em seguida, os componentes base do cluster no laboratório. O `oficina-app` fica opt-in neste repositório.
 
 Gatilhos:
 
-- `push` em `develop` e `main`
+- `push` em `main`
 - `workflow_dispatch` para execução manual na branch `main`
 
 O job de validação executa:
@@ -28,7 +43,7 @@ O job de deploy roda depois da validação apenas quando a ref e `main`. Ele usa
 
 O overlay `k8s/overlays/lab-platform` inclui os pods e recursos de cluster que pertencem a este repositório, como MailHog e observabilidade. O deploy da aplicação roda em modo automático: quando há `IMAGE_REF`, `IMAGE_TAG` válida ou uma tag recente no ECR configurado, o mesmo fluxo também aplica `k8s/overlays/lab-app` e cria ou atualiza os secrets Kubernetes necessários para JWT e, quando configurado, para variáveis de banco.
 
-Em pushes para `develop`, o workflow também abre automaticamente um pull request para `main` depois que o job de validação passa. Antes de criar um novo PR, ele verifica se ha diferenças de conteúdo entre `develop` e `main` e se já existe um PR aberto de `develop` para `main`. Merges reversos de `main` para `develop` sem alteração de arquivos não geram novo PR.
+O fluxo de abertura de PR fica isolado no workflow `Open PR To Main`, seguindo o mesmo padrão usado no `oficina-app`.
 
 ## Deactivate EKS Lab
 
