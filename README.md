@@ -214,6 +214,7 @@ Variáveis principais:
 - `api_gateway_enable_detailed_metrics`: habilita métricas detalhadas por rota no HTTP API. Padrão: `true`
 - `api_gateway_http_routes`: rotas `HTTP_PROXY` para expor a aplicação principal ou outros backends HTTP
 - `api_gateway_lambda_routes`: rotas `AWS_PROXY` para expor Lambdas existentes
+- `observability_lambda_function_names`: Lambdas exibidas no dashboard técnico. Padrão: `["oficina-auth-lambda-lab", "oficina-notificacao-lambda-lab"]`; rotas em `api_gateway_lambda_routes` também são incluídas automaticamente
 - `api_gateway_vpc_link_subnet_ids`, `api_gateway_vpc_link_security_group_ids` e `api_gateway_create_vpc_link_security_group`: usados apenas quando uma rota HTTP precisar de integração privada via `VPC_LINK`
 - `expose_oficina_app_api_gateway`: publica o `oficina-app` na raiz do HTTP API usando `VPC_LINK`, NLB interno e o `NodePort` do Service Kubernetes. Padrão: `true`
 - `oficina_app_api_gateway_jwt_authorizer_enabled`: quando `true`, ativa o JWT authorizer nativo do HTTP API nas rotas padrão do `oficina-app`
@@ -365,7 +366,7 @@ O repositório mantém duas camadas complementares de observabilidade:
 - métricas de negócio e técnicas expostas pelo app
 - probes Kubernetes em `GET /q/health/live` e `GET /q/health/ready`
 - env vars OTEL e `OFICINA_OBSERVABILITY_*` padronizadas no `ConfigMap`
-- dashboards separados para métricas negociais e técnicas, incluindo latência agregada e por rota, 5xx, consumo k8s por pod/container, healthchecks e uptime
+- dashboards separados para métricas negociais e técnicas, incluindo latência agregada e por rota, 5xx, consumo k8s agrupado por serviço, métricas de Lambdas, healthchecks e uptime
 - alarmes de latência agregada e por rota, 5xx, falhas de integração, falhas de processamento de OS e healthchecks
 - correlação entre access logs do gateway e logs JSON do backend por `X-Request-Id`/`request_id`
 

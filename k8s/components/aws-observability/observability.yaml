@@ -225,6 +225,7 @@ data:
                   "dimensions": [
                     ["ClusterName"],
                     ["ClusterName", "namespace"],
+                    ["ClusterName", "namespace", "service"],
                     ["ClusterName", "namespace", "pod"],
                     ["ClusterName", "namespace", "pod", "container"]
                   ],
@@ -272,6 +273,23 @@ data:
             replacement: /api/v1/nodes/$1/proxy/metrics/cadvisor
           - target_label: ClusterName
             replacement: OBSERVABILITY_CLUSTER_NAME_PLACEHOLDER
+        metric_relabel_configs:
+          - source_labels: [pod]
+            regex: ^(.+)$
+            target_label: service
+            replacement: $1
+          - source_labels: [service]
+            regex: ^(.+)-[a-f0-9]{9,10}-[a-z0-9]{5}$
+            target_label: service
+            replacement: $1
+          - source_labels: [service]
+            regex: ^(.+)-[0-9]+$
+            target_label: service
+            replacement: $1
+          - source_labels: [service]
+            regex: ^(.+)-[a-z0-9]{5}$
+            target_label: service
+            replacement: $1
 ---
 apiVersion: apps/v1
 kind: Deployment

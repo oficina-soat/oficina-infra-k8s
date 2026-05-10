@@ -418,6 +418,17 @@ variable "observability_enable_k8s_resource_metrics" {
   default     = true
 }
 
+variable "observability_lambda_function_names" {
+  type        = list(string)
+  description = "Nomes das funcoes Lambda da suite que devem aparecer no dashboard tecnico."
+  default     = ["oficina-auth-lambda-lab", "oficina-notificacao-lambda-lab"]
+
+  validation {
+    condition     = alltrue([for function_name in var.observability_lambda_function_names : trimspace(function_name) != ""])
+    error_message = "observability_lambda_function_names nao pode conter nomes vazios."
+  }
+}
+
 variable "observability_manage_node_role_policy_attachment" {
   type        = bool
   description = "Quando true, o Terraform tenta anexar CloudWatchAgentServerPolicy na IAM role dos nodes do EKS. Mantenha false quando o runner nao puder alterar IAM."

@@ -155,6 +155,7 @@ Variáveis opcionais:
 - `OBSERVABILITY_ENABLED`: default `true`; liga a stack AWS-native de observabilidade
 - `OBSERVABILITY_ENABLE_K8S_RESOURCE_METRICS`: default `true`; quando `false`, o deploy aplica `cwagent-prometheus` com `replicas=0`
 - `OBSERVABILITY_AWS_CREDENTIALS_SECRET_ENABLED`: default `true`; cria uma secret Kubernetes com as credenciais AWS do runner para os coletores publicarem no CloudWatch
+- `OBSERVABILITY_LAMBDA_FUNCTION_NAMES`: lista JSON de Lambdas exibidas no dashboard técnico; default `["oficina-auth-lambda-lab","oficina-notificacao-lambda-lab"]`
 - `OBSERVABILITY_MANAGE_NODE_ROLE_POLICY_ATTACHMENT`: default `false`; use `true` apenas quando o runner puder executar `iam:AttachRolePolicy` na role dos nodes do EKS
 - `OBSERVABILITY_ALERT_EMAIL_ENDPOINTS`: lista JSON de emails inscritos nos tópicos SNS, por exemplo `["ops@example.com"]`
 

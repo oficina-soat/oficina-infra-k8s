@@ -33,7 +33,7 @@ Esta etapa conecta a base vendor-neutral da suíte Oficina a serviços nativos d
 - dashboards ficam em `CloudWatch Dashboard`, evitando `Amazon Managed Grafana`
 - métricas de negócio saem de logs estruturados com `Metric Filters`, evitando collector permanente para esses sinais
 - o namespace de métricas é particionado por ambiente (`<namespace-base>/<environment>`), evitando mistura entre `lab` e ambientes futuros sem precisar de dimensões extras
-- consumo k8s usa `cAdvisor` com dimensões por cluster, namespace, pod e container:
+- consumo k8s usa `cAdvisor` com dimensões por cluster, namespace, service, pod e container. O label `service` é derivado do nome do pod para agrupar réplicas do mesmo serviço nos gráficos:
   - `container_cpu_usage_seconds_total`
   - `container_cpu_cfs_throttled_seconds_total`
   - `container_memory_working_set_bytes`
@@ -60,6 +60,7 @@ Para deixar a observabilidade AWS-native ligada:
 - `OBSERVABILITY_ENABLED=true`
 - `OBSERVABILITY_ENABLE_K8S_RESOURCE_METRICS=true`
 - `OBSERVABILITY_AWS_CREDENTIALS_SECRET_ENABLED=true`
+- `OBSERVABILITY_LAMBDA_FUNCTION_NAMES=["oficina-auth-lambda-lab","oficina-notificacao-lambda-lab"]`, ou a lista completa de Lambdas da suíte quando houver nomes customizados
 
 Por padrao, `OBSERVABILITY_AWS_CREDENTIALS_SECRET_ENABLED=true`. O deploy cria a secret Kubernetes `amazon-cloudwatch/oficina-observability-aws-credentials` com as credenciais AWS do runner para que `aws-for-fluent-bit` e `cloudwatch-agent` consigam publicar no CloudWatch mesmo quando a conta do laboratorio nao permite alterar IAM.
 
@@ -88,7 +89,8 @@ O dashboard `oficina-lab-observability` concentra as métricas negociais:
 O dashboard `oficina-lab-technical-observability` concentra as métricas técnicas:
 
 - latência agregada da API, respostas 5xx e latência p95 por rota
-- CPU, memória, rede e filesystem dos recursos k8s, com busca agregada e ordenação no próprio CloudWatch para manter o painel eficiente
+- invocações, erros, throttling e duração p95 das Lambdas configuradas
+- CPU, memória, rede e filesystem dos recursos k8s agrupados por serviço
 - live/ready
 
 ## Alertas
