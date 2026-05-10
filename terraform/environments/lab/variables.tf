@@ -402,7 +402,7 @@ variable "observability_environment_name" {
 
 variable "observability_enable_dashboard" {
   type        = bool
-  description = "Quando true, cria o dashboard CloudWatch consolidado."
+  description = "Quando true, cria os dashboards CloudWatch de observabilidade."
   default     = true
 }
 

@@ -159,8 +159,13 @@ output "observability_prometheus_log_group_name" {
 }
 
 output "observability_dashboard_name" {
-  description = "Nome do dashboard CloudWatch criado para observabilidade."
+  description = "Nome do dashboard CloudWatch de metricas negociais."
   value       = try(module.aws_native_observability[0].dashboard_name, null)
+}
+
+output "observability_technical_dashboard_name" {
+  description = "Nome do dashboard CloudWatch de metricas tecnicas."
+  value       = try(module.aws_native_observability[0].technical_dashboard_name, null)
 }
 
 output "observability_warning_topic_arn" {

@@ -17,7 +17,8 @@ Esta etapa conecta a base vendor-neutral da suíte Oficina a serviços nativos d
   - latência agregada e por rota do HTTP API via métricas nativas detalhadas do API Gateway
   - CPU, throttling, memória, rede e filesystem dos pods/containers do cluster via `cloudwatch-agent` mínimo, raspando `cAdvisor`
 - `CloudWatch Dashboard`
-  - um dashboard consolidado para negócio e operação mínima
+  - um dashboard para métricas negociais
+  - um dashboard separado para métricas técnicas
 - `CloudWatch Alarms`
   - warning/critical para latência, integração, processamento de OS e healthchecks
 - `Route 53 Health Checks`
@@ -69,7 +70,7 @@ Se as credenciais do runner forem temporarias, rode novamente o deploy quando el
 Para reduzir custo recorrente sem mexer no resto da stack:
 
 - `OBSERVABILITY_ENABLE_K8S_RESOURCE_METRICS=false`
-  - mantém logs, dashboard, alarmes e healthchecks
+  - mantém logs, dashboards, alarmes e healthchecks
   - escala o `cwagent-prometheus` para `0`
 - `OBSERVABILITY_ENABLED=false`
   - remove toda a stack AWS-native de observabilidade do `lab`
@@ -78,11 +79,14 @@ Depois de alterar as variáveis do environment `lab`, rode novamente `Deploy Lab
 
 ## Dashboards
 
-O dashboard `oficina-lab-observability` concentra:
+O dashboard `oficina-lab-observability` concentra as métricas negociais:
 
 - volume diário de OS
 - tempo médio por status
 - falhas de integração e processamento
+
+O dashboard `oficina-lab-technical-observability` concentra as métricas técnicas:
+
 - latência agregada da API, respostas 5xx e latência p95 por rota
 - CPU, memória, rede e filesystem dos recursos k8s, com busca agregada e ordenação no próprio CloudWatch para manter o painel eficiente
 - live/ready

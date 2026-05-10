@@ -447,81 +447,87 @@ resource "aws_cloudwatch_dashboard" "this" {
 
   dashboard_name = "oficina-${var.environment}-observability"
   dashboard_body = jsonencode({
-    widgets = concat(
-      [
-        {
-          type   = "metric"
-          x      = 0
-          y      = 0
-          width  = 12
-          height = 6
-          properties = {
-            title   = "Volume diario de OS"
-            region  = var.region
-            stat    = "Sum"
-            period  = 86400
-            start   = "-P14D"
-            view    = "timeSeries"
-            stacked = false
-            metrics = [
-              [local.metric_namespace, "OsCreatedTotal", { id = "m1", visible = false }],
-              [{ expression = "FILL(m1, 0)", id = "e1", label = "Ordens criadas por dia" }]
-            ]
-          }
-        },
-        {
-          type   = "metric"
-          x      = 12
-          y      = 0
-          width  = 12
-          height = 6
-          properties = {
-            title                = "Tempo medio por status"
-            region               = var.region
-            stat                 = "Average"
-            period               = 3600
-            start                = "-P14D"
-            view                 = "singleValue"
-            stacked              = false
-            setPeriodToTimeRange = true
-            metrics = [
-              [local.metric_namespace, local.status_duration_metric_names.RECEBIDA, { label = "RECEBIDA" }],
-              [".", local.status_duration_metric_names.EM_DIAGNOSTICO, { label = "EM_DIAGNOSTICO" }],
-              [".", local.status_duration_metric_names.AGUARDANDO_APROVACAO, { label = "AGUARDANDO_APROVACAO" }],
-              [".", local.status_duration_metric_names.EM_EXECUCAO, { label = "EM_EXECUCAO" }],
-              [".", local.status_duration_metric_names.FINALIZADA, { label = "FINALIZADA" }]
-            ]
-          }
-        },
-        {
-          type   = "metric"
-          x      = 0
-          y      = 6
-          width  = 12
-          height = 6
-          properties = {
-            title   = "Falhas de integracao e processamento"
-            region  = var.region
-            stat    = "Sum"
-            period  = 300
-            view    = "timeSeries"
-            stacked = false
-            metrics = concat(
-              [
-                [local.metric_namespace, "IntegrationFailuresTotal", { label = "Falhas de integracao" }]
-              ],
-              local.api_gateway_access_log_metrics_enabled ? [
-                [local.metric_namespace, "OsProcessingFailuresTotal", { label = "Falhas de processamento OS" }]
-              ] : []
-            )
-          }
+    widgets = [
+      {
+        type   = "metric"
+        x      = 0
+        y      = 0
+        width  = 12
+        height = 6
+        properties = {
+          title   = "Volume diario de OS"
+          region  = var.region
+          stat    = "Sum"
+          period  = 86400
+          view    = "timeSeries"
+          stacked = false
+          metrics = [
+            [local.metric_namespace, "OsCreatedTotal", { id = "m1", visible = false }],
+            [{ expression = "FILL(m1, 0)", id = "e1", label = "Ordens criadas por dia" }]
+          ]
         }
-      ],
+      },
+      {
+        type   = "metric"
+        x      = 12
+        y      = 0
+        width  = 12
+        height = 6
+        properties = {
+          title                = "Tempo medio por status"
+          region               = var.region
+          stat                 = "Average"
+          period               = 3600
+          view                 = "singleValue"
+          stacked              = false
+          setPeriodToTimeRange = true
+          metrics = [
+            [local.metric_namespace, local.status_duration_metric_names.RECEBIDA, { label = "RECEBIDA" }],
+            [".", local.status_duration_metric_names.EM_DIAGNOSTICO, { label = "EM_DIAGNOSTICO" }],
+            [".", local.status_duration_metric_names.AGUARDANDO_APROVACAO, { label = "AGUARDANDO_APROVACAO" }],
+            [".", local.status_duration_metric_names.EM_EXECUCAO, { label = "EM_EXECUCAO" }],
+            [".", local.status_duration_metric_names.FINALIZADA, { label = "FINALIZADA" }]
+          ]
+        }
+      },
+      {
+        type   = "metric"
+        x      = 0
+        y      = 6
+        width  = 12
+        height = 6
+        properties = {
+          title   = "Falhas de integracao e processamento"
+          region  = var.region
+          stat    = "Sum"
+          period  = 300
+          view    = "timeSeries"
+          stacked = false
+          metrics = concat(
+            [
+              [local.metric_namespace, "IntegrationFailuresTotal", { label = "Falhas de integracao" }]
+            ],
+            local.api_gateway_access_log_metrics_enabled ? [
+              [local.metric_namespace, "OsProcessingFailuresTotal", { label = "Falhas de processamento OS" }]
+            ] : []
+          )
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_cloudwatch_dashboard" "technical" {
+  count = var.enabled && var.enable_dashboard ? 1 : 0
+
+  dashboard_name = "oficina-${var.environment}-technical-observability"
+  dashboard_body = jsonencode({
+    widgets = concat(
       [
         for enabled in [local.api_gateway_latency_alarms_enabled] : {
           type   = "metric"
-          x      = 12
-          y      = 6
+          x      = 0
+          y      = 0
           width  = 12
           height = 6
           properties = {
@@ -539,10 +545,31 @@ resource "aws_cloudwatch_dashboard" "this" {
         } if enabled
       ],
       [
+        for enabled in [local.api_gateway_healthchecks_enabled] : {
+          type   = "metric"
+          x      = 12
+          y      = 0
+          width  = 12
+          height = 6
+          properties = {
+            title   = "Uptime e healthchecks"
+            region  = var.region
+            period  = 60
+            stat    = "Minimum"
+            view    = "timeSeries"
+            stacked = false
+            metrics = [
+              ["AWS/Route53", "HealthCheckStatus", "HealthCheckId", aws_route53_health_check.live[0].id, { label = "Live" }],
+              [".", "HealthCheckStatus", ".", aws_route53_health_check.ready[0].id, { label = "Ready" }]
+            ]
+          }
+        } if enabled
+      ],
+      [
         for enabled in [local.api_gateway_latency_alarms_enabled && length(local.api_gateway_route_keys) > 0] : {
           type   = "metric"
           x      = 0
-          y      = 12
+          y      = 6
           width  = 24
           height = 6
           properties = {
@@ -563,7 +590,7 @@ resource "aws_cloudwatch_dashboard" "this" {
           {
             type   = "metric"
             x      = 0
-            y      = 18
+            y      = 12
             width  = 12
             height = 6
             properties = {
@@ -580,7 +607,7 @@ resource "aws_cloudwatch_dashboard" "this" {
           {
             type   = "metric"
             x      = 12
-            y      = 18
+            y      = 12
             width  = 12
             height = 6
             properties = {
@@ -597,7 +624,7 @@ resource "aws_cloudwatch_dashboard" "this" {
           {
             type   = "metric"
             x      = 0
-            y      = 24
+            y      = 18
             width  = 12
             height = 6
             properties = {
@@ -615,7 +642,7 @@ resource "aws_cloudwatch_dashboard" "this" {
           {
             type   = "metric"
             x      = 12
-            y      = 24
+            y      = 18
             width  = 12
             height = 6
             properties = {
@@ -630,28 +657,7 @@ resource "aws_cloudwatch_dashboard" "this" {
             }
           }
         ] if enabled
-      ]),
-      [
-        for enabled in [local.api_gateway_healthchecks_enabled] : {
-          type   = "metric"
-          x      = 12
-          y      = 30
-          width  = 12
-          height = 6
-          properties = {
-            title   = "Uptime e healthchecks"
-            region  = var.region
-            period  = 60
-            stat    = "Minimum"
-            view    = "timeSeries"
-            stacked = false
-            metrics = [
-              ["AWS/Route53", "HealthCheckStatus", "HealthCheckId", aws_route53_health_check.live[0].id, { label = "Live" }],
-              [".", "HealthCheckStatus", ".", aws_route53_health_check.ready[0].id, { label = "Ready" }]
-            ]
-          }
-        } if enabled
-      ]
+      ])
     )
   })
 }
