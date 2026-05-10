@@ -43,7 +43,7 @@ O job de deploy roda depois da validação apenas quando a ref e `main`. Ele usa
 
 O overlay `k8s/overlays/lab-platform` inclui os pods e recursos de cluster que pertencem a este repositório, como MailHog e observabilidade. O deploy da aplicação roda em modo automático: quando há `IMAGE_REF`, `IMAGE_TAG` válida ou uma tag recente no ECR configurado, o mesmo fluxo também aplica `k8s/overlays/lab-app` e cria ou atualiza os secrets Kubernetes necessários para JWT e, quando configurado, para variáveis de banco.
 
-Ao final do deploy bem-sucedido deste repositório, o workflow dispara o `workflow_dispatch` do `deploy-lab.yml` do repositório `oficina-infra-db` e não espera essa execução terminar. O passo usa `OFICINA_DB_REPOSITORY` para escolher o repositório de destino, `OFICINA_DB_WORKFLOW_REF` para escolher a ref e o secret `OFICINA_DB_WORKFLOW_TOKEN` quando for necessário um token com acesso ao repositório do banco. Falhas nesse disparo não derrubam o deploy deste repositório.
+Ao final do deploy bem-sucedido deste repositório, o workflow dispara o `workflow_dispatch` do `deploy-lab.yml` do repositório `oficina-infra-db` e não espera essa execução terminar. O passo usa `OFICINA_DB_REPOSITORY` para escolher o repositório de destino, `OFICINA_DB_WORKFLOW_REF` para escolher a ref e os secrets `OFICINA_DB_WORKFLOW_TOKEN` ou `OFICINA_WORKFLOW_TOKEN` quando for necessário um token com acesso ao repositório do banco. Falhas nesse disparo geram warning e não derrubam o deploy deste repositório.
 
 O fluxo de abertura de PR fica isolado no workflow `Open PR To Main`, seguindo o mesmo padrão usado no `oficina-app`.
 
@@ -179,6 +179,7 @@ Secrets opcionais:
 
 - `K8S_DATABASE_ENV_FILE`: conteúdo `.env` usado para criar ou atualizar o secret Kubernetes `oficina-database-env`
 - `OFICINA_DB_WORKFLOW_TOKEN`: token usado para disparar o workflow do `oficina-infra-db` quando o `GITHUB_TOKEN` deste repositório não tiver acesso ao repo alvo
+- `OFICINA_WORKFLOW_TOKEN`: token compartilhado opcional para disparar workflows em repositórios irmãos quando o token específico não estiver configurado
 
 O secret de banco deve informar `QUARKUS_DATASOURCE_REACTIVE_URL` ou conter dados suficientes para o deploy montar essa URL automaticamente. Formatos aceitos:
 

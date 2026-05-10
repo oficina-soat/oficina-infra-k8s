@@ -477,6 +477,7 @@ Secrets opcionais:
 
 - `K8S_DATABASE_ENV_FILE`: conteúdo `.env` usado para criar ou atualizar o secret Kubernetes `oficina-database-env`
 - `OFICINA_DB_WORKFLOW_TOKEN`: token usado para disparar o workflow do `oficina-infra-db` quando o `GITHUB_TOKEN` deste repositório não tiver acesso ao repo alvo
+- `OFICINA_WORKFLOW_TOKEN`: token compartilhado opcional para disparar workflows em repositórios irmãos quando o token específico não estiver configurado
 
 O secret de banco deve informar `QUARKUS_DATASOURCE_REACTIVE_URL` ou conter dados suficientes para o deploy montar essa URL automaticamente. Formatos aceitos:
 
