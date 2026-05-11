@@ -753,13 +753,13 @@ resource "aws_cloudwatch_dashboard" "technical" {
             width  = 12
             height = 6
             properties = {
-              title   = "Filesystem k8s por servico"
+              title   = "Throttling CPU k8s por servico"
               region  = var.region
               period  = 60
               view    = "timeSeries"
               stacked = false
               metrics = [
-                [{ expression = "SEARCH('{ContainerInsights/Prometheus,ClusterName,namespace,service} MetricName=\"container_fs_usage_bytes\" ClusterName=\"${var.cluster_name}\"', 'Average', 60)", id = "fs", label = "Disco por servico" }]
+                [{ expression = "SEARCH('{ContainerInsights/Prometheus,ClusterName,namespace,service} MetricName=\"container_cpu_cfs_throttled_seconds_total\" ClusterName=\"${var.cluster_name}\"', 'Sum', 60)", id = "throttle", label = "Throttling CPU por servico" }]
               ]
             }
           }
