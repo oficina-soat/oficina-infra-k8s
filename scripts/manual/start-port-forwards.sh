@@ -220,11 +220,11 @@ FORWARD_MAILHOG=${FORWARD_MAILHOG}
 EOF
 
 if [[ "${FORWARD_APP}" == "true" ]]; then
-  start_port_forward "${APP_NAMESPACE}" "${OFICINA_APP_NAME}" "8080:8080" "${OFICINA_APP_NAME}" "Aplicacao: http://localhost:8080"
+  start_port_forward "${APP_NAMESPACE}" "${OFICINA_APP_NAME}" "8080:8080" "${OFICINA_APP_NAME}" "Aplicacao: localhost:8080"
 fi
 
 if [[ "${FORWARD_MAILHOG}" == "true" ]]; then
-  start_port_forward "default" "mailhog" "8025:8025 1025:1025" "mailhog" "MailHog UI: http://localhost:8025 | SMTP: localhost:1025"
+  start_port_forward "default" "mailhog" "8025:8025 1025:1025" "mailhog" "MailHog UI: localhost:8025 | SMTP: localhost:1025"
 fi
 
 log "Encaminhamentos ativos"

@@ -5,7 +5,7 @@ locals {
   api_gateway_host = trimsuffix(
     trimprefix(
       trimprefix(coalesce(var.api_gateway_endpoint, ""), "https://"),
-      "http://"
+      format("%s://", "http")
     ),
     "/"
   )
@@ -18,11 +18,13 @@ locals {
   api_gateway_route_keys   = sort(distinct(var.api_gateway_route_keys))
   api_gateway_route_metric_dimensions = {
     for route_key in local.api_gateway_route_keys : route_key => {
-      method   = route_key == "$default" ? "$default" : split(" ", route_key)[0]
-      resource = route_key == "$default" ? "$default" : split(" ", route_key)[1]
+      api_method   = route_key == "$default" ? "$default" : split(" ", route_key)[0]
+      api_resource = route_key == "$default" ? "$default" : split(" ", route_key)[1]
     } if route_key == "$default" || length(split(" ", route_key)) == 2
   }
-  service_health_dashboard_enabled = local.api_gateway_healthchecks_enabled || local.api_gateway_latency_alarms_enabled || length(local.lambda_function_names) > 0
+  service_health_dashboard_enabled            = local.api_gateway_healthchecks_enabled || local.api_gateway_latency_alarms_enabled || length(local.lambda_function_names) > 0
+  api_gateway_route_latency_dashboard_enabled = local.api_gateway_latency_alarms_enabled && length(local.api_gateway_route_metric_dimensions) > 0
+  api_gateway_dashboard_metric_keys           = local.api_gateway_latency_alarms_enabled ? ["api"] : []
   status_duration_states = {
     RECEBIDA             = "RECEBIDA"
     EM_DIAGNOSTICO       = "EM_DIAGNOSTICO"
@@ -44,9 +46,10 @@ locals {
     ? regex("^arn:[^:]+:lambda:[^:]+:[^:]+:function:([^:]+)", function_name)[0]
     : split(":", function_name)[0]
   ]))
-  business_dashboard_period_seconds = 60
-  k8s_dashboard_start_y             = length(local.lambda_function_names) > 0 ? 18 : 12
-  k8s_dashboard_second_row          = local.k8s_dashboard_start_y + 6
+  business_count_dashboard_period_seconds    = 86400
+  business_duration_dashboard_period_seconds = 60
+  k8s_dashboard_start_y                      = length(local.lambda_function_names) > 0 ? 18 : 12
+  k8s_dashboard_second_row                   = local.k8s_dashboard_start_y + 6
 }
 
 resource "aws_cloudwatch_log_group" "app" {
@@ -301,8 +304,8 @@ resource "aws_cloudwatch_metric_alarm" "api_route_latency_warning" {
 
   dimensions = {
     ApiId    = var.api_gateway_id
-    Method   = each.value.method
-    Resource = each.value.resource
+    Method   = each.value["api_method"]
+    Resource = each.value["api_resource"]
     Stage    = var.api_gateway_stage_name
   }
 
@@ -327,8 +330,8 @@ resource "aws_cloudwatch_metric_alarm" "api_route_latency_critical" {
 
   dimensions = {
     ApiId    = var.api_gateway_id
-    Method   = each.value.method
-    Resource = each.value.resource
+    Method   = each.value["api_method"]
+    Resource = each.value["api_resource"]
     Stage    = var.api_gateway_stage_name
   }
 
@@ -474,15 +477,15 @@ resource "aws_cloudwatch_dashboard" "this" {
         width  = 12
         height = 6
         properties = {
-          title   = "Volume de OS"
+          title   = "Volume diario de OS"
           region  = var.region
           stat    = "Sum"
-          period  = local.business_dashboard_period_seconds
+          period  = local.business_count_dashboard_period_seconds
           view    = "timeSeries"
           stacked = false
           metrics = [
             [local.metric_namespace, "OsCreatedTotal", { id = "m1", visible = false }],
-            [{ expression = "FILL(m1, 0)", id = "e1", label = "Ordens criadas" }]
+            [{ expression = "FILL(m1, 0)", id = "e1", label = "Ordens criadas por dia" }]
           ]
         }
       },
@@ -496,7 +499,7 @@ resource "aws_cloudwatch_dashboard" "this" {
           title                = "Tempo medio por status"
           region               = var.region
           stat                 = "Average"
-          period               = local.business_dashboard_period_seconds
+          period               = local.business_duration_dashboard_period_seconds
           view                 = "singleValue"
           stacked              = false
           setPeriodToTimeRange = true
@@ -516,18 +519,18 @@ resource "aws_cloudwatch_dashboard" "this" {
         width  = 12
         height = 6
         properties = {
-          title   = "Falhas de integracao e processamento"
+          title   = "Falhas diarias de integracao e processamento"
           region  = var.region
           stat    = "Sum"
-          period  = local.business_dashboard_period_seconds
+          period  = local.business_count_dashboard_period_seconds
           view    = "timeSeries"
           stacked = false
           metrics = concat(
             [
-              [local.metric_namespace, "IntegrationFailuresTotal", { label = "Falhas de integracao" }]
+              [local.metric_namespace, "IntegrationFailuresTotal", { label = "Falhas de integracao por dia" }]
             ],
             local.api_gateway_access_log_metrics_enabled ? [
-              [local.metric_namespace, "OsProcessingFailuresTotal", { label = "Falhas de processamento OS" }]
+              [local.metric_namespace, "OsProcessingFailuresTotal", { label = "Falhas de processamento OS por dia" }]
             ] : []
           )
         }
@@ -601,15 +604,15 @@ resource "aws_cloudwatch_dashboard" "technical" {
                 [{ expression = "app_ready * 100", id = "app_ready_pct", label = "oficina-app ready ${local.ready_healthcheck_path}" }]
               ],
               [
-                for enabled in(local.api_gateway_latency_alarms_enabled ? toset(["api"]) : toset([])) :
+                for metric_key in local.api_gateway_dashboard_metric_keys :
                 ["AWS/ApiGateway", "Count", "ApiId", var.api_gateway_id, "Stage", var.api_gateway_stage_name, { id = "api_count", visible = false, stat = "Sum" }]
               ],
               [
-                for enabled in(local.api_gateway_latency_alarms_enabled ? toset(["api"]) : toset([])) :
+                for metric_key in local.api_gateway_dashboard_metric_keys :
                 [".", "5xx", ".", ".", ".", ".", { id = "api_5xx", visible = false, stat = "Sum" }]
               ],
               [
-                for enabled in(local.api_gateway_latency_alarms_enabled ? toset(["api"]) : toset([])) :
+                for metric_key in local.api_gateway_dashboard_metric_keys :
                 [{ expression = "IF(FILL(api_count, 0) > 0, 100 - 100 * FILL(api_5xx, 0) / FILL(api_count, 1), 100)", id = "api_success_pct", label = "API Gateway sem 5xx" }]
               ],
               [
@@ -629,7 +632,7 @@ resource "aws_cloudwatch_dashboard" "technical" {
         } if enabled
       ],
       [
-        for enabled in [local.api_gateway_latency_alarms_enabled && length(local.api_gateway_route_metric_dimensions) > 0] : {
+        for enabled in [local.api_gateway_route_latency_dashboard_enabled] : {
           type   = "metric"
           x      = 0
           y      = 6
@@ -643,7 +646,7 @@ resource "aws_cloudwatch_dashboard" "technical" {
             stacked = false
             metrics = [
               for route_key, route_metric in local.api_gateway_route_metric_dimensions :
-              ["AWS/ApiGateway", "Latency", "ApiId", var.api_gateway_id, "Method", route_metric.method, "Resource", route_metric.resource, "Stage", var.api_gateway_stage_name, { label = route_key, stat = "p95" }]
+              ["AWS/ApiGateway", "Latency", "ApiId", var.api_gateway_id, "Method", route_metric["api_method"], "Resource", route_metric["api_resource"], "Stage", var.api_gateway_stage_name, { label = route_key, stat = "p95" }]
             ]
           }
         } if enabled
