@@ -91,11 +91,13 @@ Os widgets negociais usam período de 60 segundos para evitar atraso artificial 
 O dashboard `oficina-lab-technical-observability` concentra as métricas técnicas:
 
 - latência agregada da API, respostas 5xx e latência p95 por rota
+- disponibilidade por serviço, com healthchecks do `oficina-app`, percentual sem 5xx do API Gateway e percentual sem erro das Lambdas configuradas
 - invocações, erros, throttling e duração p95 das Lambdas configuradas
 - CPU, memória, rede e filesystem dos recursos k8s agrupados por serviço
-- live/ready
 
 Para HTTP API, a latência p95 por rota usa as dimensões detalhadas `ApiId`, `Method`, `Resource` e `Stage` publicadas pelo API Gateway. Por isso, cada route key do Terraform, como `ANY /{proxy+}`, é quebrada em `Method=ANY` e `Resource=/{proxy+}` no dashboard e nos alarmes por rota.
+
+O widget de disponibilidade normaliza os sinais em percentual para manter uma escala única: os healthchecks `live` e `ready` do Route 53 aparecem como `0%` ou `100%`, enquanto API Gateway e Lambdas usam métricas nativas para estimar percentual sem falha no período. Cada série inclui o nome do serviço no rótulo.
 
 ## Alertas
 

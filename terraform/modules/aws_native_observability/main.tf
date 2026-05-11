@@ -22,6 +22,7 @@ locals {
       resource = route_key == "$default" ? "$default" : split(" ", route_key)[1]
     } if route_key == "$default" || length(split(" ", route_key)) == 2
   }
+  service_health_dashboard_enabled = local.api_gateway_healthchecks_enabled || local.api_gateway_latency_alarms_enabled || length(local.lambda_function_names) > 0
   status_duration_states = {
     RECEBIDA             = "RECEBIDA"
     EM_DIAGNOSTICO       = "EM_DIAGNOSTICO"
@@ -557,23 +558,45 @@ resource "aws_cloudwatch_dashboard" "technical" {
         } if enabled
       ],
       [
-        for enabled in [local.api_gateway_healthchecks_enabled] : {
+        for enabled in [local.service_health_dashboard_enabled] : {
           type   = "metric"
           x      = 12
           y      = 0
           width  = 12
           height = 6
           properties = {
-            title   = "Uptime e healthchecks"
+            title   = "Disponibilidade e healthchecks por servico"
             region  = var.region
             period  = 60
-            stat    = "Minimum"
             view    = "timeSeries"
             stacked = false
-            metrics = [
-              ["AWS/Route53", "HealthCheckStatus", "HealthCheckId", aws_route53_health_check.live[0].id, { label = "Live" }],
-              [".", "HealthCheckStatus", ".", aws_route53_health_check.ready[0].id, { label = "Ready" }]
-            ]
+            yAxis = {
+              left = {
+                min   = 0
+                max   = 100
+                label = "%"
+              }
+            }
+            metrics = concat(
+              local.api_gateway_healthchecks_enabled ? [
+                ["AWS/Route53", "HealthCheckStatus", "HealthCheckId", aws_route53_health_check.live[0].id, { id = "app_live", visible = false, stat = "Minimum" }],
+                ["AWS/Route53", "HealthCheckStatus", "HealthCheckId", aws_route53_health_check.ready[0].id, { id = "app_ready", visible = false, stat = "Minimum" }],
+                [{ expression = "app_live * 100", id = "app_live_pct", label = "oficina-app live ${local.live_healthcheck_path}" }],
+                [{ expression = "app_ready * 100", id = "app_ready_pct", label = "oficina-app ready ${local.ready_healthcheck_path}" }]
+              ] : [],
+              local.api_gateway_latency_alarms_enabled ? [
+                ["AWS/ApiGateway", "Count", "ApiId", var.api_gateway_id, "Stage", var.api_gateway_stage_name, { id = "api_count", visible = false, stat = "Sum" }],
+                [".", "5xx", ".", ".", ".", ".", { id = "api_5xx", visible = false, stat = "Sum" }],
+                [{ expression = "IF(FILL(api_count, 0) > 0, 100 - 100 * FILL(api_5xx, 0) / FILL(api_count, 1), 100)", id = "api_success_pct", label = "API Gateway sem 5xx" }]
+              ] : [],
+              flatten([
+                for index, function_name in local.lambda_function_names : [
+                  ["AWS/Lambda", "Invocations", "FunctionName", function_name, { id = "l${index}_inv", visible = false, stat = "Sum" }],
+                  [".", "Errors", ".", function_name, { id = "l${index}_err", visible = false, stat = "Sum" }],
+                  [{ expression = "IF(FILL(l${index}_inv, 0) > 0, 100 - 100 * FILL(l${index}_err, 0) / FILL(l${index}_inv, 1), 100)", id = "l${index}_ok", label = "${function_name} sem erro" }]
+                ]
+              ])
+            )
           }
         } if enabled
       ],
