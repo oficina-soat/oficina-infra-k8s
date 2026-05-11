@@ -16,6 +16,13 @@ locals {
   critical_alarm_actions   = var.enabled ? [aws_sns_topic.critical[0].arn] : []
   metric_namespace         = "${var.metric_namespace}/${var.environment}"
   api_gateway_route_keys   = sort(distinct(var.api_gateway_route_keys))
+  api_gateway_route_metric_dimensions = {
+    for route_key in local.api_gateway_route_keys : route_key => {
+      method   = route_key == "$default" ? "$default" : split(" ", route_key)[0]
+      resource = route_key == "$default" ? "$default" : split(" ", route_key)[1]
+    } if route_key == "$default" || length(split(" ", route_key)) == 2
+  }
+  service_health_dashboard_enabled = local.api_gateway_healthchecks_enabled || local.api_gateway_latency_alarms_enabled || length(local.lambda_function_names) > 0
   status_duration_states = {
     RECEBIDA             = "RECEBIDA"
     EM_DIAGNOSTICO       = "EM_DIAGNOSTICO"
@@ -30,9 +37,16 @@ locals {
     EM_EXECUCAO          = "OsStatusDurationMsEmExecucao"
     FINALIZADA           = "OsStatusDurationMsFinalizada"
   }
-  lambda_function_names    = sort(distinct([for function_name in var.lambda_function_names : trimspace(function_name) if trimspace(function_name) != ""]))
-  k8s_dashboard_start_y    = length(local.lambda_function_names) > 0 ? 18 : 12
-  k8s_dashboard_second_row = local.k8s_dashboard_start_y + 6
+  lambda_function_identifiers = [for function_name in var.lambda_function_names : trimspace(function_name) if trimspace(function_name) != ""]
+  lambda_function_names = sort(distinct([
+    for function_name in local.lambda_function_identifiers :
+    startswith(function_name, "arn:") && can(regex("^arn:[^:]+:lambda:[^:]+:[^:]+:function:([^:]+)", function_name)[0])
+    ? regex("^arn:[^:]+:lambda:[^:]+:[^:]+:function:([^:]+)", function_name)[0]
+    : split(":", function_name)[0]
+  ]))
+  business_dashboard_period_seconds = 60
+  k8s_dashboard_start_y             = length(local.lambda_function_names) > 0 ? 18 : 12
+  k8s_dashboard_second_row          = local.k8s_dashboard_start_y + 6
 }
 
 resource "aws_cloudwatch_log_group" "app" {
@@ -272,7 +286,7 @@ resource "aws_cloudwatch_metric_alarm" "api_latency_critical" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "api_route_latency_warning" {
-  for_each = local.api_gateway_latency_alarms_enabled ? toset(local.api_gateway_route_keys) : toset([])
+  for_each = local.api_gateway_latency_alarms_enabled ? local.api_gateway_route_metric_dimensions : {}
 
   alarm_name          = "oficina-${var.environment}-api-route-${substr(md5(each.key), 0, 8)}-latency-warning"
   alarm_description   = "Warning: p95 de latencia da rota ${each.key} acima do limite."
@@ -286,9 +300,10 @@ resource "aws_cloudwatch_metric_alarm" "api_route_latency_warning" {
   treat_missing_data  = "notBreaching"
 
   dimensions = {
-    ApiId = var.api_gateway_id
-    Stage = var.api_gateway_stage_name
-    Route = each.key
+    ApiId    = var.api_gateway_id
+    Method   = each.value.method
+    Resource = each.value.resource
+    Stage    = var.api_gateway_stage_name
   }
 
   alarm_actions = local.warning_alarm_actions
@@ -297,7 +312,7 @@ resource "aws_cloudwatch_metric_alarm" "api_route_latency_warning" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "api_route_latency_critical" {
-  for_each = local.api_gateway_latency_alarms_enabled ? toset(local.api_gateway_route_keys) : toset([])
+  for_each = local.api_gateway_latency_alarms_enabled ? local.api_gateway_route_metric_dimensions : {}
 
   alarm_name          = "oficina-${var.environment}-api-route-${substr(md5(each.key), 0, 8)}-latency-critical"
   alarm_description   = "Critical: p95 de latencia da rota ${each.key} acima do limite severo."
@@ -311,9 +326,10 @@ resource "aws_cloudwatch_metric_alarm" "api_route_latency_critical" {
   treat_missing_data  = "notBreaching"
 
   dimensions = {
-    ApiId = var.api_gateway_id
-    Stage = var.api_gateway_stage_name
-    Route = each.key
+    ApiId    = var.api_gateway_id
+    Method   = each.value.method
+    Resource = each.value.resource
+    Stage    = var.api_gateway_stage_name
   }
 
   alarm_actions = local.critical_alarm_actions
@@ -458,15 +474,15 @@ resource "aws_cloudwatch_dashboard" "this" {
         width  = 12
         height = 6
         properties = {
-          title   = "Volume diario de OS"
+          title   = "Volume de OS"
           region  = var.region
           stat    = "Sum"
-          period  = 86400
+          period  = local.business_dashboard_period_seconds
           view    = "timeSeries"
           stacked = false
           metrics = [
             [local.metric_namespace, "OsCreatedTotal", { id = "m1", visible = false }],
-            [{ expression = "FILL(m1, 0)", id = "e1", label = "Ordens criadas por dia" }]
+            [{ expression = "FILL(m1, 0)", id = "e1", label = "Ordens criadas" }]
           ]
         }
       },
@@ -480,7 +496,7 @@ resource "aws_cloudwatch_dashboard" "this" {
           title                = "Tempo medio por status"
           region               = var.region
           stat                 = "Average"
-          period               = 3600
+          period               = local.business_dashboard_period_seconds
           view                 = "singleValue"
           stacked              = false
           setPeriodToTimeRange = true
@@ -503,7 +519,7 @@ resource "aws_cloudwatch_dashboard" "this" {
           title   = "Falhas de integracao e processamento"
           region  = var.region
           stat    = "Sum"
-          period  = 300
+          period  = local.business_dashboard_period_seconds
           view    = "timeSeries"
           stacked = false
           metrics = concat(
@@ -548,28 +564,50 @@ resource "aws_cloudwatch_dashboard" "technical" {
         } if enabled
       ],
       [
-        for enabled in [local.api_gateway_healthchecks_enabled] : {
+        for enabled in [local.service_health_dashboard_enabled] : {
           type   = "metric"
           x      = 12
           y      = 0
           width  = 12
           height = 6
           properties = {
-            title   = "Uptime e healthchecks"
+            title   = "Disponibilidade e healthchecks por servico"
             region  = var.region
             period  = 60
-            stat    = "Minimum"
             view    = "timeSeries"
             stacked = false
-            metrics = [
-              ["AWS/Route53", "HealthCheckStatus", "HealthCheckId", aws_route53_health_check.live[0].id, { label = "Live" }],
-              [".", "HealthCheckStatus", ".", aws_route53_health_check.ready[0].id, { label = "Ready" }]
-            ]
+            yAxis = {
+              left = {
+                min   = 0
+                max   = 100
+                label = "%"
+              }
+            }
+            metrics = concat(
+              local.api_gateway_healthchecks_enabled ? [
+                ["AWS/Route53", "HealthCheckStatus", "HealthCheckId", aws_route53_health_check.live[0].id, { id = "app_live", visible = false, stat = "Minimum" }],
+                ["AWS/Route53", "HealthCheckStatus", "HealthCheckId", aws_route53_health_check.ready[0].id, { id = "app_ready", visible = false, stat = "Minimum" }],
+                [{ expression = "app_live * 100", id = "app_live_pct", label = "oficina-app live ${local.live_healthcheck_path}" }],
+                [{ expression = "app_ready * 100", id = "app_ready_pct", label = "oficina-app ready ${local.ready_healthcheck_path}" }]
+              ] : [],
+              local.api_gateway_latency_alarms_enabled ? [
+                ["AWS/ApiGateway", "Count", "ApiId", var.api_gateway_id, "Stage", var.api_gateway_stage_name, { id = "api_count", visible = false, stat = "Sum" }],
+                [".", "5xx", ".", ".", ".", ".", { id = "api_5xx", visible = false, stat = "Sum" }],
+                [{ expression = "IF(FILL(api_count, 0) > 0, 100 - 100 * FILL(api_5xx, 0) / FILL(api_count, 1), 100)", id = "api_success_pct", label = "API Gateway sem 5xx" }]
+              ] : [],
+              flatten([
+                for index, function_name in local.lambda_function_names : [
+                  ["AWS/Lambda", "Invocations", "FunctionName", function_name, { id = "l${index}_inv", visible = false, stat = "Sum" }],
+                  [".", "Errors", ".", function_name, { id = "l${index}_err", visible = false, stat = "Sum" }],
+                  [{ expression = "IF(FILL(l${index}_inv, 0) > 0, 100 - 100 * FILL(l${index}_err, 0) / FILL(l${index}_inv, 1), 100)", id = "l${index}_ok", label = "${function_name} sem erro" }]
+                ]
+              ])
+            )
           }
         } if enabled
       ],
       [
-        for enabled in [local.api_gateway_latency_alarms_enabled && length(local.api_gateway_route_keys) > 0] : {
+        for enabled in [local.api_gateway_latency_alarms_enabled && length(local.api_gateway_route_metric_dimensions) > 0] : {
           type   = "metric"
           x      = 0
           y      = 6
@@ -578,12 +616,12 @@ resource "aws_cloudwatch_dashboard" "technical" {
           properties = {
             title   = "Latencia p95 por rota da API"
             region  = var.region
-            period  = 300
+            period  = 60
             view    = "timeSeries"
             stacked = false
             metrics = [
-              for route_key in local.api_gateway_route_keys :
-              ["AWS/ApiGateway", "Latency", "ApiId", var.api_gateway_id, "Stage", var.api_gateway_stage_name, "Route", route_key, { label = route_key, stat = "p95" }]
+              for route_key, route_metric in local.api_gateway_route_metric_dimensions :
+              ["AWS/ApiGateway", "Latency", "ApiId", var.api_gateway_id, "Method", route_metric.method, "Resource", route_metric.resource, "Stage", var.api_gateway_stage_name, { label = route_key, stat = "p95" }]
             ]
           }
         } if enabled
@@ -596,11 +634,21 @@ resource "aws_cloudwatch_dashboard" "technical" {
           width  = 12
           height = 6
           properties = {
-            title   = "Lambdas - invocacoes e falhas"
+            title   = "Lambdas - volume, erros e throttles"
             region  = var.region
-            period  = 300
+            period  = 60
             view    = "timeSeries"
             stacked = false
+            yAxis = {
+              left = {
+                min   = 0
+                label = "invocacoes"
+              }
+              right = {
+                min   = 0
+                label = "erros e throttles"
+              }
+            }
             metrics = concat(
               [
                 for function_name in local.lambda_function_names :
@@ -628,12 +676,18 @@ resource "aws_cloudwatch_dashboard" "technical" {
           properties = {
             title   = "Lambdas - duracao p95"
             region  = var.region
-            period  = 300
+            period  = 60
             view    = "timeSeries"
             stacked = false
+            yAxis = {
+              left = {
+                min   = 0
+                label = "ms"
+              }
+            }
             metrics = [
               for function_name in local.lambda_function_names :
-              ["AWS/Lambda", "Duration", "FunctionName", function_name, { label = function_name, stat = "p95" }]
+              ["AWS/Lambda", "Duration", "FunctionName", function_name, { label = "${function_name} p95", stat = "p95" }]
             ]
           }
         } if enabled
@@ -699,13 +753,13 @@ resource "aws_cloudwatch_dashboard" "technical" {
             width  = 12
             height = 6
             properties = {
-              title   = "Filesystem k8s por servico"
+              title   = "Throttling CPU k8s por servico"
               region  = var.region
               period  = 60
               view    = "timeSeries"
               stacked = false
               metrics = [
-                [{ expression = "SEARCH('{ContainerInsights/Prometheus,ClusterName,namespace,service} MetricName=\"container_fs_usage_bytes\" ClusterName=\"${var.cluster_name}\"', 'Average', 60)", id = "fs", label = "Disco por servico" }]
+                [{ expression = "SEARCH('{ContainerInsights/Prometheus,ClusterName,namespace,service} MetricName=\"container_cpu_cfs_throttled_seconds_total\" ClusterName=\"${var.cluster_name}\"', 'Sum', 60)", id = "throttle", label = "Throttling CPU por servico" }]
               ]
             }
           }

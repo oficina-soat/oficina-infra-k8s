@@ -15,7 +15,7 @@ Esta etapa conecta a base vendor-neutral da suíte Oficina a serviços nativos d
   - `OsProcessingFailuresTotal`
 - `CloudWatch Metrics`
   - latência agregada e por rota do HTTP API via métricas nativas detalhadas do API Gateway
-  - CPU, throttling, memória, rede e filesystem dos pods/containers do cluster via `cloudwatch-agent` mínimo, raspando `cAdvisor`
+- CPU, throttling, memória e rede dos pods/containers do cluster via `cloudwatch-agent` mínimo, raspando `cAdvisor`
 - `CloudWatch Dashboard`
   - um dashboard para métricas negociais
   - um dashboard separado para métricas técnicas
@@ -39,7 +39,6 @@ Esta etapa conecta a base vendor-neutral da suíte Oficina a serviços nativos d
   - `container_memory_working_set_bytes`
   - `container_network_receive_bytes_total`
   - `container_network_transmit_bytes_total`
-  - `container_fs_usage_bytes`
 - não usa `Application Signals`, `X-Ray`, `Container Insights` completo, `Amazon Managed Prometheus` nem `SES`
 
 ## Recursos com custo recorrente mesmo com baixo tráfego
@@ -82,16 +81,26 @@ Depois de alterar as variáveis do environment `lab`, rode novamente `Deploy Lab
 
 O dashboard `oficina-lab-observability` concentra as métricas negociais:
 
-- volume diário de OS
+- volume de OS
 - tempo médio por status
 - falhas de integração e processamento
+
+Os widgets negociais usam período de 60 segundos para evitar atraso artificial de visualização no CloudWatch. Como esses sinais vêm de `CloudWatch Logs Metric Filters`, a atualização ainda depende da ingestão dos logs estruturados do `oficina-app` e da publicação padrão de métricas do CloudWatch.
 
 O dashboard `oficina-lab-technical-observability` concentra as métricas técnicas:
 
 - latência agregada da API, respostas 5xx e latência p95 por rota
-- invocações, erros, throttling e duração p95 das Lambdas configuradas
-- CPU, memória, rede e filesystem dos recursos k8s agrupados por serviço
-- live/ready
+- disponibilidade por serviço, com healthchecks do `oficina-app`, percentual sem 5xx do API Gateway e percentual sem erro das Lambdas configuradas
+- volume, erros, throttles e duração p95 das Lambdas configuradas
+- CPU, throttling, memória e rede dos recursos k8s agrupados por serviço
+
+O dashboard técnico não exibe filesystem por serviço porque `container_fs_usage_bytes` pode não trazer labels de pod/container suficientes em todos os runtimes, especialmente com containerd/cAdvisor, o que deixa a série por `service` vazia no CloudWatch. O quarto gráfico k8s usa throttling de CPU por serviço, que é coletado pelo mesmo `cAdvisor` e mantém a agregação por serviço consistente.
+
+Para HTTP API, a latência p95 por rota usa as dimensões detalhadas `ApiId`, `Method`, `Resource` e `Stage` publicadas pelo API Gateway. Por isso, cada route key do Terraform, como `ANY /{proxy+}`, é quebrada em `Method=ANY` e `Resource=/{proxy+}` no dashboard e nos alarmes por rota.
+
+O widget de disponibilidade normaliza os sinais em percentual para manter uma escala única: os healthchecks `live` e `ready` do Route 53 aparecem como `0%` ou `100%`, enquanto API Gateway e Lambdas usam métricas nativas para estimar percentual sem falha no período. Cada série inclui o nome do serviço no rótulo.
+
+Os widgets de Lambda usam período de 60 segundos. O widget de volume separa invocações no eixo esquerdo e erros/throttles no eixo direito, porque todos são contadores mas têm escala diferente. O widget de duração exibe p95 em milissegundos. Quando uma Lambda for informada como ARN ou `nome:alias`, o dashboard usa o nome base da função na dimensão `FunctionName`.
 
 ## Alertas
 

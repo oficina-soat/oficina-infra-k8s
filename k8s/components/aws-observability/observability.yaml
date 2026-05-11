@@ -234,8 +234,7 @@ data:
                     "^container_cpu_cfs_throttled_seconds_total$",
                     "^container_memory_working_set_bytes$",
                     "^container_network_receive_bytes_total$",
-                    "^container_network_transmit_bytes_total$",
-                    "^container_fs_usage_bytes$"
+                    "^container_network_transmit_bytes_total$"
                   ]
                 }
               ]
