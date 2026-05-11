@@ -470,6 +470,8 @@ resource "aws_cloudwatch_dashboard" "this" {
 
   dashboard_name = "oficina-${var.environment}-observability"
   dashboard_body = jsonencode({
+    start          = "-P7D"
+    periodOverride = "inherit"
     widgets = [
       {
         type   = "metric"
