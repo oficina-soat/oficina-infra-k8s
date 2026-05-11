@@ -58,7 +58,7 @@ EOF
 normalize_url_like_value() {
   local value="$1"
 
-  if [[ "${value}" == http://* || "${value}" == https://* ]]; then
+  if [[ "${value}" =~ ^https?:// ]]; then
     printf '%s' "${value%/}"
     return
   fi
@@ -113,7 +113,7 @@ prepare_auth_config() {
     fi
   fi
 
-  if [[ -z "${OFICINA_AUTH_JWKS_URI}" && ( "${OFICINA_AUTH_ISSUER}" == http://* || "${OFICINA_AUTH_ISSUER}" == https://* ) ]]; then
+  if [[ -z "${OFICINA_AUTH_JWKS_URI}" && "${OFICINA_AUTH_ISSUER}" =~ ^https?:// ]]; then
     OFICINA_AUTH_JWKS_URI="${OFICINA_AUTH_ISSUER}/.well-known/jwks.json"
   fi
 
