@@ -16,6 +16,12 @@ locals {
   critical_alarm_actions   = var.enabled ? [aws_sns_topic.critical[0].arn] : []
   metric_namespace         = "${var.metric_namespace}/${var.environment}"
   api_gateway_route_keys   = sort(distinct(var.api_gateway_route_keys))
+  api_gateway_route_metric_dimensions = {
+    for route_key in local.api_gateway_route_keys : route_key => {
+      method   = route_key == "$default" ? "$default" : split(" ", route_key)[0]
+      resource = route_key == "$default" ? "$default" : split(" ", route_key)[1]
+    } if route_key == "$default" || length(split(" ", route_key)) == 2
+  }
   status_duration_states = {
     RECEBIDA             = "RECEBIDA"
     EM_DIAGNOSTICO       = "EM_DIAGNOSTICO"
@@ -273,7 +279,7 @@ resource "aws_cloudwatch_metric_alarm" "api_latency_critical" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "api_route_latency_warning" {
-  for_each = local.api_gateway_latency_alarms_enabled ? toset(local.api_gateway_route_keys) : toset([])
+  for_each = local.api_gateway_latency_alarms_enabled ? local.api_gateway_route_metric_dimensions : {}
 
   alarm_name          = "oficina-${var.environment}-api-route-${substr(md5(each.key), 0, 8)}-latency-warning"
   alarm_description   = "Warning: p95 de latencia da rota ${each.key} acima do limite."
@@ -287,9 +293,10 @@ resource "aws_cloudwatch_metric_alarm" "api_route_latency_warning" {
   treat_missing_data  = "notBreaching"
 
   dimensions = {
-    ApiId = var.api_gateway_id
-    Stage = var.api_gateway_stage_name
-    Route = each.key
+    ApiId    = var.api_gateway_id
+    Method   = each.value.method
+    Resource = each.value.resource
+    Stage    = var.api_gateway_stage_name
   }
 
   alarm_actions = local.warning_alarm_actions
@@ -298,7 +305,7 @@ resource "aws_cloudwatch_metric_alarm" "api_route_latency_warning" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "api_route_latency_critical" {
-  for_each = local.api_gateway_latency_alarms_enabled ? toset(local.api_gateway_route_keys) : toset([])
+  for_each = local.api_gateway_latency_alarms_enabled ? local.api_gateway_route_metric_dimensions : {}
 
   alarm_name          = "oficina-${var.environment}-api-route-${substr(md5(each.key), 0, 8)}-latency-critical"
   alarm_description   = "Critical: p95 de latencia da rota ${each.key} acima do limite severo."
@@ -312,9 +319,10 @@ resource "aws_cloudwatch_metric_alarm" "api_route_latency_critical" {
   treat_missing_data  = "notBreaching"
 
   dimensions = {
-    ApiId = var.api_gateway_id
-    Stage = var.api_gateway_stage_name
-    Route = each.key
+    ApiId    = var.api_gateway_id
+    Method   = each.value.method
+    Resource = each.value.resource
+    Stage    = var.api_gateway_stage_name
   }
 
   alarm_actions = local.critical_alarm_actions
@@ -570,7 +578,7 @@ resource "aws_cloudwatch_dashboard" "technical" {
         } if enabled
       ],
       [
-        for enabled in [local.api_gateway_latency_alarms_enabled && length(local.api_gateway_route_keys) > 0] : {
+        for enabled in [local.api_gateway_latency_alarms_enabled && length(local.api_gateway_route_metric_dimensions) > 0] : {
           type   = "metric"
           x      = 0
           y      = 6
@@ -579,12 +587,12 @@ resource "aws_cloudwatch_dashboard" "technical" {
           properties = {
             title   = "Latencia p95 por rota da API"
             region  = var.region
-            period  = 300
+            period  = 60
             view    = "timeSeries"
             stacked = false
             metrics = [
-              for route_key in local.api_gateway_route_keys :
-              ["AWS/ApiGateway", "Latency", "ApiId", var.api_gateway_id, "Stage", var.api_gateway_stage_name, "Route", route_key, { label = route_key, stat = "p95" }]
+              for route_key, route_metric in local.api_gateway_route_metric_dimensions :
+              ["AWS/ApiGateway", "Latency", "ApiId", var.api_gateway_id, "Method", route_metric.method, "Resource", route_metric.resource, "Stage", var.api_gateway_stage_name, { label = route_key, stat = "p95" }]
             ]
           }
         } if enabled

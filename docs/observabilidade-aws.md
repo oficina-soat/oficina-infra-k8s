@@ -95,6 +95,8 @@ O dashboard `oficina-lab-technical-observability` concentra as métricas técnic
 - CPU, memória, rede e filesystem dos recursos k8s agrupados por serviço
 - live/ready
 
+Para HTTP API, a latência p95 por rota usa as dimensões detalhadas `ApiId`, `Method`, `Resource` e `Stage` publicadas pelo API Gateway. Por isso, cada route key do Terraform, como `ANY /{proxy+}`, é quebrada em `Method=ANY` e `Resource=/{proxy+}` no dashboard e nos alarmes por rota.
+
 ## Alertas
 
 Topicos SNS:
