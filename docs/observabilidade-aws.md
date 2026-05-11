@@ -90,17 +90,18 @@ Os widgets negociais de contagem usam período de 1 dia e estatística `Sum`, ex
 O dashboard `oficina-lab-technical-observability` concentra as métricas técnicas:
 
 - latência agregada da API, respostas 5xx e latência p95 por rota
-- disponibilidade por serviço, com healthchecks do `oficina-app`, percentual sem 5xx do API Gateway e percentual sem erro das Lambdas configuradas
-- volume, erros, throttles e duração p95 das Lambdas configuradas
+- disponibilidade por serviço, com healthchecks do `oficina-app` e percentual sem 5xx do API Gateway
+- saúde HTTP por rota da API, calculada por `Count` e `5xx`
+- volume, throttles, concorrência e duração p95 das Lambdas configuradas
 - CPU, throttling, memória e rede dos recursos k8s agrupados por serviço
 
 O dashboard técnico não exibe filesystem por serviço porque `container_fs_usage_bytes` pode não trazer labels de pod/container suficientes em todos os runtimes, especialmente com containerd/cAdvisor, o que deixa a série por `service` vazia no CloudWatch. O quarto gráfico k8s usa throttling de CPU por serviço, que é coletado pelo mesmo `cAdvisor` e mantém a agregação por serviço consistente.
 
 Para HTTP API, a latência p95 por rota usa as dimensões detalhadas `ApiId`, `Method`, `Resource` e `Stage` publicadas pelo API Gateway. Por isso, cada route key do Terraform, como `ANY /{proxy+}`, é quebrada em `Method=ANY` e `Resource=/{proxy+}` no dashboard e nos alarmes por rota.
 
-O widget de disponibilidade normaliza os sinais em percentual para manter uma escala única: os healthchecks `live` e `ready` do Route 53 aparecem como `0%` ou `100%`, enquanto API Gateway e Lambdas usam métricas nativas para estimar percentual sem falha no período. Cada série inclui o nome do serviço no rótulo.
+O widget de disponibilidade normaliza os sinais em percentual para manter uma escala única: os healthchecks `live` e `ready` do Route 53 aparecem como `0%` ou `100%`, enquanto o API Gateway usa métricas nativas para estimar percentual sem 5xx no período. Cada série inclui o nome do serviço no rótulo.
 
-Os widgets de Lambda usam período de 60 segundos. O widget de volume separa invocações no eixo esquerdo e erros/throttles no eixo direito, porque todos são contadores mas têm escala diferente. O widget de duração exibe p95 em milissegundos. Quando uma Lambda for informada como ARN ou `nome:alias`, o dashboard usa o nome base da função na dimensão `FunctionName`.
+O widget de saúde HTTP por rota usa as métricas `Count` e `5xx` do API Gateway para capturar falhas vistas pelo consumidor, inclusive quando uma Lambda HTTP retorna resposta 5xx sem gerar `Errors` no namespace `AWS/Lambda`. O widget técnico de Lambda usa período de 60 segundos e exibe `Invocations`, `Throttles`, `ConcurrentExecutions` com estatística `Maximum` e `Duration` p95 em milissegundos. Quando uma Lambda for informada como ARN ou `nome:alias`, o dashboard usa o nome base da função na dimensão `FunctionName`.
 
 ## Alertas
 

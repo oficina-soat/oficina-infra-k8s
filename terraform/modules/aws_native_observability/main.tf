@@ -22,8 +22,9 @@ locals {
       api_resource = route_key == "$default" ? "$default" : split(" ", route_key)[1]
     } if route_key == "$default" || length(split(" ", route_key)) == 2
   }
-  service_health_dashboard_enabled            = local.api_gateway_healthchecks_enabled || local.api_gateway_latency_alarms_enabled || length(local.lambda_function_names) > 0
+  service_health_dashboard_enabled            = local.api_gateway_healthchecks_enabled || local.api_gateway_latency_alarms_enabled
   api_gateway_route_latency_dashboard_enabled = local.api_gateway_latency_alarms_enabled && length(local.api_gateway_route_metric_dimensions) > 0
+  api_gateway_route_dashboard_keys            = sort(keys(local.api_gateway_route_metric_dimensions))
   api_gateway_dashboard_metric_keys           = local.api_gateway_latency_alarms_enabled ? ["api"] : []
   status_duration_states = {
     RECEBIDA             = "RECEBIDA"
@@ -614,18 +615,6 @@ resource "aws_cloudwatch_dashboard" "technical" {
               [
                 for metric_key in local.api_gateway_dashboard_metric_keys :
                 [{ expression = "IF(FILL(api_count, 0) > 0, 100 - 100 * FILL(api_5xx, 0) / FILL(api_count, 1), 100)", id = "api_success_pct", label = "API Gateway sem 5xx" }]
-              ],
-              [
-                for index, function_name in local.lambda_function_names :
-                ["AWS/Lambda", "Invocations", "FunctionName", function_name, { id = "l${index}_inv", visible = false, stat = "Sum" }]
-              ],
-              [
-                for index, function_name in local.lambda_function_names :
-                [".", "Errors", ".", function_name, { id = "l${index}_err", visible = false, stat = "Sum" }]
-              ],
-              [
-                for index, function_name in local.lambda_function_names :
-                [{ expression = "IF(FILL(l${index}_inv, 0) > 0, 100 - 100 * FILL(l${index}_err, 0) / FILL(l${index}_inv, 1), 100)", id = "l${index}_ok", label = "${function_name} sem erro" }]
               ]
             )
           }
@@ -636,7 +625,7 @@ resource "aws_cloudwatch_dashboard" "technical" {
           type   = "metric"
           x      = 0
           y      = 6
-          width  = 24
+          width  = 12
           height = 6
           properties = {
             title   = "Latencia p95 por rota da API"
@@ -652,14 +641,14 @@ resource "aws_cloudwatch_dashboard" "technical" {
         } if enabled
       ],
       [
-        for enabled in [length(local.lambda_function_names) > 0] : {
+        for enabled in [local.api_gateway_route_latency_dashboard_enabled] : {
           type   = "metric"
-          x      = 0
-          y      = 12
+          x      = 12
+          y      = 6
           width  = 12
           height = 6
           properties = {
-            title   = "Lambdas - volume, erros e throttles"
+            title   = "Saude HTTP por rota da API"
             region  = var.region
             period  = 60
             view    = "timeSeries"
@@ -667,11 +656,48 @@ resource "aws_cloudwatch_dashboard" "technical" {
             yAxis = {
               left = {
                 min   = 0
-                label = "invocacoes"
+                max   = 100
+                label = "% sem 5xx"
+              }
+            }
+            metrics = concat(
+              [
+                for index, route_key in local.api_gateway_route_dashboard_keys :
+                ["AWS/ApiGateway", "Count", "ApiId", var.api_gateway_id, "Method", local.api_gateway_route_metric_dimensions[route_key]["api_method"], "Resource", local.api_gateway_route_metric_dimensions[route_key]["api_resource"], "Stage", var.api_gateway_stage_name, { id = "r${index}_count", visible = false, stat = "Sum" }]
+              ],
+              [
+                for index, route_key in local.api_gateway_route_dashboard_keys :
+                [".", "5xx", ".", ".", ".", ".", ".", ".", ".", ".", { id = "r${index}_5xx", visible = false, stat = "Sum" }]
+              ],
+              [
+                for index, route_key in local.api_gateway_route_dashboard_keys :
+                [{ expression = "IF(FILL(r${index}_count, 0) > 0, 100 - 100 * FILL(r${index}_5xx, 0) / FILL(r${index}_count, 1), 100)", id = "r${index}_ok", label = "${route_key} sem 5xx" }]
+              ]
+            )
+          }
+        } if enabled
+      ],
+      [
+        for enabled in [length(local.lambda_function_names) > 0] : {
+          type   = "metric"
+          x      = 0
+          y      = 12
+          width  = 24
+          height = 6
+          properties = {
+            title   = "Lambdas - metricas tecnicas"
+            region  = var.region
+            period  = 60
+            view    = "timeSeries"
+            stacked = false
+            yAxis = {
+              left = {
+                min   = 0
+                label = "contagem"
               }
               right = {
                 min   = 0
-                label = "erros e throttles"
+                label = "ms"
               }
             }
             metrics = concat(
@@ -681,39 +707,17 @@ resource "aws_cloudwatch_dashboard" "technical" {
               ],
               [
                 for function_name in local.lambda_function_names :
-                [".", "Errors", ".", function_name, { label = "${function_name} erros", stat = "Sum", yAxis = "right" }]
+                [".", "Throttles", ".", function_name, { label = "${function_name} throttles", stat = "Sum" }]
               ],
               [
                 for function_name in local.lambda_function_names :
-                [".", "Throttles", ".", function_name, { label = "${function_name} throttles", stat = "Sum", yAxis = "right" }]
+                [".", "ConcurrentExecutions", ".", function_name, { label = "${function_name} concorrencia max", stat = "Maximum" }]
+              ],
+              [
+                for function_name in local.lambda_function_names :
+                [".", "Duration", ".", function_name, { label = "${function_name} duracao p95", stat = "p95", yAxis = "right" }]
               ]
             )
-          }
-        } if enabled
-      ],
-      [
-        for enabled in [length(local.lambda_function_names) > 0] : {
-          type   = "metric"
-          x      = 12
-          y      = 12
-          width  = 12
-          height = 6
-          properties = {
-            title   = "Lambdas - duracao p95"
-            region  = var.region
-            period  = 60
-            view    = "timeSeries"
-            stacked = false
-            yAxis = {
-              left = {
-                min   = 0
-                label = "ms"
-              }
-            }
-            metrics = [
-              for function_name in local.lambda_function_names :
-              ["AWS/Lambda", "Duration", "FunctionName", function_name, { label = "${function_name} p95", stat = "p95" }]
-            ]
           }
         } if enabled
       ],
