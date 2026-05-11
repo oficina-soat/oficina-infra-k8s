@@ -37,7 +37,13 @@ locals {
     EM_EXECUCAO          = "OsStatusDurationMsEmExecucao"
     FINALIZADA           = "OsStatusDurationMsFinalizada"
   }
-  lambda_function_names             = sort(distinct([for function_name in var.lambda_function_names : trimspace(function_name) if trimspace(function_name) != ""]))
+  lambda_function_identifiers = [for function_name in var.lambda_function_names : trimspace(function_name) if trimspace(function_name) != ""]
+  lambda_function_names = sort(distinct([
+    for function_name in local.lambda_function_identifiers :
+    startswith(function_name, "arn:") && can(regex("^arn:[^:]+:lambda:[^:]+:[^:]+:function:([^:]+)", function_name)[0])
+    ? regex("^arn:[^:]+:lambda:[^:]+:[^:]+:function:([^:]+)", function_name)[0]
+    : split(":", function_name)[0]
+  ]))
   business_dashboard_period_seconds = 60
   k8s_dashboard_start_y             = length(local.lambda_function_names) > 0 ? 18 : 12
   k8s_dashboard_second_row          = local.k8s_dashboard_start_y + 6
@@ -628,11 +634,21 @@ resource "aws_cloudwatch_dashboard" "technical" {
           width  = 12
           height = 6
           properties = {
-            title   = "Lambdas - invocacoes e falhas"
+            title   = "Lambdas - volume, erros e throttles"
             region  = var.region
-            period  = 300
+            period  = 60
             view    = "timeSeries"
             stacked = false
+            yAxis = {
+              left = {
+                min   = 0
+                label = "invocacoes"
+              }
+              right = {
+                min   = 0
+                label = "erros e throttles"
+              }
+            }
             metrics = concat(
               [
                 for function_name in local.lambda_function_names :
@@ -660,12 +676,18 @@ resource "aws_cloudwatch_dashboard" "technical" {
           properties = {
             title   = "Lambdas - duracao p95"
             region  = var.region
-            period  = 300
+            period  = 60
             view    = "timeSeries"
             stacked = false
+            yAxis = {
+              left = {
+                min   = 0
+                label = "ms"
+              }
+            }
             metrics = [
               for function_name in local.lambda_function_names :
-              ["AWS/Lambda", "Duration", "FunctionName", function_name, { label = function_name, stat = "p95" }]
+              ["AWS/Lambda", "Duration", "FunctionName", function_name, { label = "${function_name} p95", stat = "p95" }]
             ]
           }
         } if enabled
