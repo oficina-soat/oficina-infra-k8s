@@ -584,24 +584,46 @@ resource "aws_cloudwatch_dashboard" "technical" {
               }
             }
             metrics = concat(
-              local.api_gateway_healthchecks_enabled ? [
-                ["AWS/Route53", "HealthCheckStatus", "HealthCheckId", aws_route53_health_check.live[0].id, { id = "app_live", visible = false, stat = "Minimum" }],
-                ["AWS/Route53", "HealthCheckStatus", "HealthCheckId", aws_route53_health_check.ready[0].id, { id = "app_ready", visible = false, stat = "Minimum" }],
-                [{ expression = "app_live * 100", id = "app_live_pct", label = "oficina-app live ${local.live_healthcheck_path}" }],
+              [
+                for healthcheck in aws_route53_health_check.live :
+                ["AWS/Route53", "HealthCheckStatus", "HealthCheckId", healthcheck.id, { id = "app_live", visible = false, stat = "Minimum" }]
+              ],
+              [
+                for healthcheck in aws_route53_health_check.ready :
+                ["AWS/Route53", "HealthCheckStatus", "HealthCheckId", healthcheck.id, { id = "app_ready", visible = false, stat = "Minimum" }]
+              ],
+              [
+                for healthcheck in aws_route53_health_check.live :
+                [{ expression = "app_live * 100", id = "app_live_pct", label = "oficina-app live ${local.live_healthcheck_path}" }]
+              ],
+              [
+                for healthcheck in aws_route53_health_check.ready :
                 [{ expression = "app_ready * 100", id = "app_ready_pct", label = "oficina-app ready ${local.ready_healthcheck_path}" }]
-              ] : [],
-              local.api_gateway_latency_alarms_enabled ? [
-                ["AWS/ApiGateway", "Count", "ApiId", var.api_gateway_id, "Stage", var.api_gateway_stage_name, { id = "api_count", visible = false, stat = "Sum" }],
-                [".", "5xx", ".", ".", ".", ".", { id = "api_5xx", visible = false, stat = "Sum" }],
+              ],
+              [
+                for enabled in(local.api_gateway_latency_alarms_enabled ? toset(["api"]) : toset([])) :
+                ["AWS/ApiGateway", "Count", "ApiId", var.api_gateway_id, "Stage", var.api_gateway_stage_name, { id = "api_count", visible = false, stat = "Sum" }]
+              ],
+              [
+                for enabled in(local.api_gateway_latency_alarms_enabled ? toset(["api"]) : toset([])) :
+                [".", "5xx", ".", ".", ".", ".", { id = "api_5xx", visible = false, stat = "Sum" }]
+              ],
+              [
+                for enabled in(local.api_gateway_latency_alarms_enabled ? toset(["api"]) : toset([])) :
                 [{ expression = "IF(FILL(api_count, 0) > 0, 100 - 100 * FILL(api_5xx, 0) / FILL(api_count, 1), 100)", id = "api_success_pct", label = "API Gateway sem 5xx" }]
-              ] : [],
-              flatten([
-                for index, function_name in local.lambda_function_names : [
-                  ["AWS/Lambda", "Invocations", "FunctionName", function_name, { id = "l${index}_inv", visible = false, stat = "Sum" }],
-                  [".", "Errors", ".", function_name, { id = "l${index}_err", visible = false, stat = "Sum" }],
-                  [{ expression = "IF(FILL(l${index}_inv, 0) > 0, 100 - 100 * FILL(l${index}_err, 0) / FILL(l${index}_inv, 1), 100)", id = "l${index}_ok", label = "${function_name} sem erro" }]
-                ]
-              ])
+              ],
+              [
+                for index, function_name in local.lambda_function_names :
+                ["AWS/Lambda", "Invocations", "FunctionName", function_name, { id = "l${index}_inv", visible = false, stat = "Sum" }]
+              ],
+              [
+                for index, function_name in local.lambda_function_names :
+                [".", "Errors", ".", function_name, { id = "l${index}_err", visible = false, stat = "Sum" }]
+              ],
+              [
+                for index, function_name in local.lambda_function_names :
+                [{ expression = "IF(FILL(l${index}_inv, 0) > 0, 100 - 100 * FILL(l${index}_err, 0) / FILL(l${index}_inv, 1), 100)", id = "l${index}_ok", label = "${function_name} sem erro" }]
+              ]
             )
           }
         } if enabled
