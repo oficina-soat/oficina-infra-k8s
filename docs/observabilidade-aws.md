@@ -81,11 +81,11 @@ Depois de alterar as variáveis do environment `lab`, rode novamente `Deploy Lab
 
 O dashboard `oficina-lab-observability` concentra as métricas negociais:
 
-- volume de OS
+- volume diário de OS
 - tempo médio por status
-- falhas de integração e processamento
+- falhas diárias de integração e processamento
 
-Os widgets negociais usam período de 60 segundos para evitar atraso artificial de visualização no CloudWatch. Como esses sinais vêm de `CloudWatch Logs Metric Filters`, a atualização ainda depende da ingestão dos logs estruturados do `oficina-app` e da publicação padrão de métricas do CloudWatch.
+Os widgets negociais de contagem usam período de 1 dia e estatística `Sum`, exibindo buckets diários para volume de OS e falhas. O widget de tempo médio por status continua com período de 60 segundos e `setPeriodToTimeRange`, para resumir a janela selecionada no dashboard. Como esses sinais vêm de `CloudWatch Logs Metric Filters`, a atualização ainda depende da ingestão dos logs estruturados do `oficina-app` e da publicação padrão de métricas do CloudWatch.
 
 O dashboard `oficina-lab-technical-observability` concentra as métricas técnicas:
 

@@ -46,9 +46,10 @@ locals {
     ? regex("^arn:[^:]+:lambda:[^:]+:[^:]+:function:([^:]+)", function_name)[0]
     : split(":", function_name)[0]
   ]))
-  business_dashboard_period_seconds = 60
-  k8s_dashboard_start_y             = length(local.lambda_function_names) > 0 ? 18 : 12
-  k8s_dashboard_second_row          = local.k8s_dashboard_start_y + 6
+  business_count_dashboard_period_seconds    = 86400
+  business_duration_dashboard_period_seconds = 60
+  k8s_dashboard_start_y                      = length(local.lambda_function_names) > 0 ? 18 : 12
+  k8s_dashboard_second_row                   = local.k8s_dashboard_start_y + 6
 }
 
 resource "aws_cloudwatch_log_group" "app" {
@@ -476,15 +477,15 @@ resource "aws_cloudwatch_dashboard" "this" {
         width  = 12
         height = 6
         properties = {
-          title   = "Volume de OS"
+          title   = "Volume diario de OS"
           region  = var.region
           stat    = "Sum"
-          period  = local.business_dashboard_period_seconds
+          period  = local.business_count_dashboard_period_seconds
           view    = "timeSeries"
           stacked = false
           metrics = [
             [local.metric_namespace, "OsCreatedTotal", { id = "m1", visible = false }],
-            [{ expression = "FILL(m1, 0)", id = "e1", label = "Ordens criadas" }]
+            [{ expression = "FILL(m1, 0)", id = "e1", label = "Ordens criadas por dia" }]
           ]
         }
       },
@@ -498,7 +499,7 @@ resource "aws_cloudwatch_dashboard" "this" {
           title                = "Tempo medio por status"
           region               = var.region
           stat                 = "Average"
-          period               = local.business_dashboard_period_seconds
+          period               = local.business_duration_dashboard_period_seconds
           view                 = "singleValue"
           stacked              = false
           setPeriodToTimeRange = true
@@ -518,18 +519,18 @@ resource "aws_cloudwatch_dashboard" "this" {
         width  = 12
         height = 6
         properties = {
-          title   = "Falhas de integracao e processamento"
+          title   = "Falhas diarias de integracao e processamento"
           region  = var.region
           stat    = "Sum"
-          period  = local.business_dashboard_period_seconds
+          period  = local.business_count_dashboard_period_seconds
           view    = "timeSeries"
           stacked = false
           metrics = concat(
             [
-              [local.metric_namespace, "IntegrationFailuresTotal", { label = "Falhas de integracao" }]
+              [local.metric_namespace, "IntegrationFailuresTotal", { label = "Falhas de integracao por dia" }]
             ],
             local.api_gateway_access_log_metrics_enabled ? [
-              [local.metric_namespace, "OsProcessingFailuresTotal", { label = "Falhas de processamento OS" }]
+              [local.metric_namespace, "OsProcessingFailuresTotal", { label = "Falhas de processamento OS por dia" }]
             ] : []
           )
         }
