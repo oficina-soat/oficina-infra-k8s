@@ -30,9 +30,10 @@ locals {
     EM_EXECUCAO          = "OsStatusDurationMsEmExecucao"
     FINALIZADA           = "OsStatusDurationMsFinalizada"
   }
-  lambda_function_names    = sort(distinct([for function_name in var.lambda_function_names : trimspace(function_name) if trimspace(function_name) != ""]))
-  k8s_dashboard_start_y    = length(local.lambda_function_names) > 0 ? 18 : 12
-  k8s_dashboard_second_row = local.k8s_dashboard_start_y + 6
+  lambda_function_names             = sort(distinct([for function_name in var.lambda_function_names : trimspace(function_name) if trimspace(function_name) != ""]))
+  business_dashboard_period_seconds = 60
+  k8s_dashboard_start_y             = length(local.lambda_function_names) > 0 ? 18 : 12
+  k8s_dashboard_second_row          = local.k8s_dashboard_start_y + 6
 }
 
 resource "aws_cloudwatch_log_group" "app" {
@@ -458,15 +459,15 @@ resource "aws_cloudwatch_dashboard" "this" {
         width  = 12
         height = 6
         properties = {
-          title   = "Volume diario de OS"
+          title   = "Volume de OS"
           region  = var.region
           stat    = "Sum"
-          period  = 86400
+          period  = local.business_dashboard_period_seconds
           view    = "timeSeries"
           stacked = false
           metrics = [
             [local.metric_namespace, "OsCreatedTotal", { id = "m1", visible = false }],
-            [{ expression = "FILL(m1, 0)", id = "e1", label = "Ordens criadas por dia" }]
+            [{ expression = "FILL(m1, 0)", id = "e1", label = "Ordens criadas" }]
           ]
         }
       },
@@ -480,7 +481,7 @@ resource "aws_cloudwatch_dashboard" "this" {
           title                = "Tempo medio por status"
           region               = var.region
           stat                 = "Average"
-          period               = 3600
+          period               = local.business_dashboard_period_seconds
           view                 = "singleValue"
           stacked              = false
           setPeriodToTimeRange = true
@@ -503,7 +504,7 @@ resource "aws_cloudwatch_dashboard" "this" {
           title   = "Falhas de integracao e processamento"
           region  = var.region
           stat    = "Sum"
-          period  = 300
+          period  = local.business_dashboard_period_seconds
           view    = "timeSeries"
           stacked = false
           metrics = concat(
