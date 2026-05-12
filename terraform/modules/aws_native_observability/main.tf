@@ -32,6 +32,7 @@ locals {
     AGUARDANDO_APROVACAO = "AGUARDANDO_APROVACAO"
     EM_EXECUCAO          = "EM_EXECUCAO"
     FINALIZADA           = "FINALIZADA"
+    ENTREGUE             = "ENTREGUE"
   }
   status_duration_metric_names = {
     RECEBIDA             = "OsStatusDurationMsRecebida"
@@ -39,6 +40,15 @@ locals {
     AGUARDANDO_APROVACAO = "OsStatusDurationMsAguardandoAprovacao"
     EM_EXECUCAO          = "OsStatusDurationMsEmExecucao"
     FINALIZADA           = "OsStatusDurationMsFinalizada"
+    ENTREGUE             = "OsStatusDurationMsEntregue"
+  }
+  status_transition_metric_names = {
+    RECEBIDA             = "OsStatusTransitionsTotalRecebida"
+    EM_DIAGNOSTICO       = "OsStatusTransitionsTotalEmDiagnostico"
+    AGUARDANDO_APROVACAO = "OsStatusTransitionsTotalAguardandoAprovacao"
+    EM_EXECUCAO          = "OsStatusTransitionsTotalEmExecucao"
+    FINALIZADA           = "OsStatusTransitionsTotalFinalizada"
+    ENTREGUE             = "OsStatusTransitionsTotalEntregue"
   }
   lambda_function_identifiers = [for function_name in var.lambda_function_names : trimspace(function_name) if trimspace(function_name) != ""]
   lambda_function_names = sort(distinct([
@@ -128,6 +138,21 @@ resource "aws_cloudwatch_log_metric_filter" "os_status_duration_ms" {
     namespace = local.metric_namespace
     value     = "$.mdc.ordem_servico_status_duration_ms"
     unit      = "Milliseconds"
+  }
+}
+
+resource "aws_cloudwatch_log_metric_filter" "os_status_transitions_total" {
+  for_each = var.enabled ? local.status_duration_states : {}
+
+  name           = "oficina-${var.environment}-os-status-transitions-${lower(replace(each.key, "_", "-"))}"
+  log_group_name = aws_cloudwatch_log_group.app[0].name
+  pattern        = "{ $.message = \"Transicao de ordem de servico concluida\" && $.mdc.ordem_servico_status_novo = \"${each.value}\" }"
+
+  metric_transformation {
+    name          = local.status_transition_metric_names[each.key]
+    namespace     = local.metric_namespace
+    value         = "1"
+    default_value = 0
   }
 }
 
@@ -559,13 +584,37 @@ resource "aws_cloudwatch_dashboard" "this" {
             [".", local.status_duration_metric_names.EM_DIAGNOSTICO, { label = "EM_DIAGNOSTICO" }],
             [".", local.status_duration_metric_names.AGUARDANDO_APROVACAO, { label = "AGUARDANDO_APROVACAO" }],
             [".", local.status_duration_metric_names.EM_EXECUCAO, { label = "EM_EXECUCAO" }],
-            [".", local.status_duration_metric_names.FINALIZADA, { label = "FINALIZADA" }]
+            [".", local.status_duration_metric_names.FINALIZADA, { label = "FINALIZADA" }],
+            [".", local.status_duration_metric_names.ENTREGUE, { label = "ENTREGUE" }]
           ]
         }
       },
       {
         type   = "metric"
         x      = 0
+        y      = 6
+        width  = 12
+        height = 6
+        properties = {
+          title   = "Transicoes diarias por status"
+          region  = var.region
+          stat    = "Sum"
+          period  = local.business_count_dashboard_period_seconds
+          view    = "timeSeries"
+          stacked = false
+          metrics = [
+            [local.metric_namespace, local.status_transition_metric_names.RECEBIDA, { label = "RECEBIDA" }],
+            [".", local.status_transition_metric_names.EM_DIAGNOSTICO, { label = "EM_DIAGNOSTICO" }],
+            [".", local.status_transition_metric_names.AGUARDANDO_APROVACAO, { label = "AGUARDANDO_APROVACAO" }],
+            [".", local.status_transition_metric_names.EM_EXECUCAO, { label = "EM_EXECUCAO" }],
+            [".", local.status_transition_metric_names.FINALIZADA, { label = "FINALIZADA" }],
+            [".", local.status_transition_metric_names.ENTREGUE, { label = "ENTREGUE" }]
+          ]
+        }
+      },
+      {
+        type   = "metric"
+        x      = 12
         y      = 6
         width  = 12
         height = 6

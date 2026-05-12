@@ -11,6 +11,7 @@ Esta etapa conecta a base vendor-neutral da suíte Oficina a serviços nativos d
 - `CloudWatch Logs Metric Filters`
   - `OsCreatedTotal`
   - `OsStatusDurationMs*` por status
+  - `OsStatusTransitionsTotal*` por status de destino
   - `IntegrationFailuresTotal`
   - `OsProcessingFailuresTotal`, derivado dos logs HTTP estruturados do `oficina-app`
 - `CloudWatch Metrics`
@@ -83,6 +84,7 @@ O dashboard `oficina-lab-observability` concentra as métricas negociais:
 
 - volume diário de OS
 - tempo médio por status
+- transições diárias por status
 - falhas diárias de integração e processamento
 
 Os widgets negociais de contagem usam período de 1 dia e estatística `Sum`, exibindo buckets diários para volume de OS e falhas. O widget de tempo médio por status continua com período de 60 segundos e `setPeriodToTimeRange`, para resumir a janela selecionada no dashboard. Como esses sinais vêm de `CloudWatch Logs Metric Filters`, a atualização ainda depende da ingestão dos logs estruturados do `oficina-app` e da publicação padrão de métricas do CloudWatch.
