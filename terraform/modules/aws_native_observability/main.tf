@@ -1,7 +1,4 @@
 locals {
-  api_gateway_healthchecks_enabled       = var.enabled && var.api_gateway_enabled && var.enable_route53_healthchecks
-  api_gateway_latency_alarms_enabled     = var.enabled && var.api_gateway_enabled
-  api_gateway_access_log_metrics_enabled = var.enabled && var.api_gateway_access_logs_enabled
   api_gateway_host = trimsuffix(
     trimprefix(
       trimprefix(coalesce(var.api_gateway_endpoint, ""), "https://"),
@@ -9,13 +6,16 @@ locals {
     ),
     "/"
   )
-  api_gateway_stage_prefix = var.api_gateway_stage_name == "$default" ? "" : "/${trim(var.api_gateway_stage_name, "/")}"
-  live_healthcheck_path    = "${local.api_gateway_stage_prefix}${var.live_healthcheck_path}"
-  ready_healthcheck_path   = "${local.api_gateway_stage_prefix}${var.ready_healthcheck_path}"
-  warning_alarm_actions    = var.enabled ? [aws_sns_topic.warning[0].arn] : []
-  critical_alarm_actions   = var.enabled ? [aws_sns_topic.critical[0].arn] : []
-  metric_namespace         = "${var.metric_namespace}/${var.environment}"
-  api_gateway_route_keys   = sort(distinct(var.api_gateway_route_keys))
+  api_gateway_healthchecks_enabled       = var.enabled && var.api_gateway_enabled && var.enable_route53_healthchecks && local.api_gateway_host != ""
+  api_gateway_latency_alarms_enabled     = var.enabled && var.api_gateway_enabled && try(trimspace(var.api_gateway_id), "") != ""
+  api_gateway_access_log_metrics_enabled = var.enabled && var.api_gateway_access_logs_enabled && try(trimspace(var.api_gateway_access_log_group_name), "") != ""
+  api_gateway_stage_prefix               = var.api_gateway_stage_name == "$default" ? "" : "/${trim(var.api_gateway_stage_name, "/")}"
+  live_healthcheck_path                  = "${local.api_gateway_stage_prefix}${var.live_healthcheck_path}"
+  ready_healthcheck_path                 = "${local.api_gateway_stage_prefix}${var.ready_healthcheck_path}"
+  warning_alarm_actions                  = var.enabled ? [aws_sns_topic.warning[0].arn] : []
+  critical_alarm_actions                 = var.enabled ? [aws_sns_topic.critical[0].arn] : []
+  metric_namespace                       = "${var.metric_namespace}/${var.environment}"
+  api_gateway_route_keys                 = sort(distinct(var.api_gateway_route_keys))
   api_gateway_route_metric_dimensions = {
     for route_key in local.api_gateway_route_keys : route_key => {
       api_method   = route_key == "$default" ? "$default" : split(" ", route_key)[0]

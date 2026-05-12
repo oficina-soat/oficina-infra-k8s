@@ -153,5 +153,6 @@ Para receber e-mail real, configure `OBSERVABILITY_ALERT_EMAIL_ENDPOINTS` com um
 
 - a correlação principal fica em `request_id`, `trace_id` e `span_id` nos logs estruturados
 - o API Gateway sobrescreve `X-Request-Id` com `$context.requestId`, permitindo correlacionar access logs do gateway e logs JSON do backend pelo mesmo identificador
+- os recursos dependentes do API Gateway só são criados quando IDs, endpoints ou log groups necessários estiverem preenchidos
 - a coleta k8s continua mínima e via Prometheus/cAdvisor; ela cobre consumo de recursos dos pods/containers, mas não habilita o pacote completo de Container Insights gerenciado
 - as métricas de negócio dependem dos logs estruturados permanecerem compatíveis com os filtros CloudWatch
