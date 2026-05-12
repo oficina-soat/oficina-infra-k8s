@@ -12,7 +12,7 @@ Esta etapa conecta a base vendor-neutral da suíte Oficina a serviços nativos d
   - `OsCreatedTotal`
   - `OsStatusDurationMs*` por status
   - `IntegrationFailuresTotal`
-  - `OsProcessingFailuresTotal`
+  - `OsProcessingFailuresTotal`, derivado dos logs HTTP estruturados do `oficina-app`
 - `CloudWatch Metrics`
   - latência agregada, latência de integração, 4xx, 5xx e latência por rota do HTTP API via métricas nativas detalhadas do API Gateway
 - CPU, throttling, memória e rede dos pods/containers do cluster via `cloudwatch-agent` mínimo, raspando `cAdvisor`
@@ -20,7 +20,7 @@ Esta etapa conecta a base vendor-neutral da suíte Oficina a serviços nativos d
   - um dashboard para métricas negociais
   - um dashboard separado para métricas técnicas
 - `CloudWatch Alarms`
-  - warning/critical para latência, integração, processamento de OS e healthchecks
+  - warning/critical para latência, integração, processamento de OS detectado no app e healthchecks
 - `Route 53 Health Checks`
   - `live` e `ready`, com integração nativa ao CloudWatch
 - `SNS`

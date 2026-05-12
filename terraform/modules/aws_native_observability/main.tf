@@ -147,11 +147,11 @@ resource "aws_cloudwatch_log_metric_filter" "integration_failures_total" {
 }
 
 resource "aws_cloudwatch_log_metric_filter" "os_processing_failures_total" {
-  count = local.api_gateway_access_log_metrics_enabled ? 1 : 0
+  count = var.enabled ? 1 : 0
 
   name           = "oficina-${var.environment}-os-processing-failures-total"
-  log_group_name = var.api_gateway_access_log_group_name
-  pattern        = "{ $.path = \"*ordem-de-servico*\" && $.status = 5* }"
+  log_group_name = aws_cloudwatch_log_group.app[0].name
+  pattern        = "{ $.message = \"HTTP request completed\" && $.mdc.['url.path'] = \"*ordem-de-servico*\" && $.mdc.['http.status_code'] = \"5*\" }"
 
   metric_transformation {
     name          = "OsProcessingFailuresTotal"
@@ -476,10 +476,10 @@ resource "aws_cloudwatch_metric_alarm" "integration_failures_critical" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "os_processing_failures_warning" {
-  count = local.api_gateway_access_log_metrics_enabled ? 1 : 0
+  count = var.enabled ? 1 : 0
 
   alarm_name          = "oficina-${var.environment}-os-processing-failures-warning"
-  alarm_description   = "Warning: falhas de processamento de OS detectadas no gateway."
+  alarm_description   = "Warning: falhas de processamento de OS detectadas nos logs do oficina-app."
   comparison_operator = "GreaterThanOrEqualToThreshold"
   evaluation_periods  = 1
   threshold           = var.os_processing_failures_warning_threshold
@@ -495,10 +495,10 @@ resource "aws_cloudwatch_metric_alarm" "os_processing_failures_warning" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "os_processing_failures_critical" {
-  count = local.api_gateway_access_log_metrics_enabled ? 1 : 0
+  count = var.enabled ? 1 : 0
 
   alarm_name          = "oficina-${var.environment}-os-processing-failures-critical"
-  alarm_description   = "Critical: volume alto de falhas de processamento de OS detectadas no gateway."
+  alarm_description   = "Critical: volume alto de falhas de processamento de OS detectadas nos logs do oficina-app."
   comparison_operator = "GreaterThanOrEqualToThreshold"
   evaluation_periods  = 1
   threshold           = var.os_processing_failures_critical_threshold
@@ -580,9 +580,9 @@ resource "aws_cloudwatch_dashboard" "this" {
             [
               [local.metric_namespace, "IntegrationFailuresTotal", { label = "Falhas de integracao por dia" }]
             ],
-            local.api_gateway_access_log_metrics_enabled ? [
+            [
               [local.metric_namespace, "OsProcessingFailuresTotal", { label = "Falhas de processamento OS por dia" }]
-            ] : []
+            ]
           )
         }
       }
