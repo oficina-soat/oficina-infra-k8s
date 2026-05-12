@@ -101,6 +101,7 @@ O dashboard `oficina-lab-technical-observability` concentra as métricas técnic
 - saúde HTTP por rota da API, calculada por `Count` e `5xx`
 - volume, throttles, concorrência e duração p95 das Lambdas configuradas
 - CPU, throttling, memória e rede dos recursos k8s agrupados por serviço
+- consultas Logs Insights para falhas recentes de OS, integrações e 5xx do gateway
 
 O dashboard técnico não exibe filesystem por serviço porque `container_fs_usage_bytes` pode não trazer labels de pod/container suficientes em todos os runtimes, especialmente com containerd/cAdvisor, o que deixa a série por `service` vazia no CloudWatch. O quarto gráfico k8s usa throttling de CPU por serviço, que é coletado pelo mesmo `cAdvisor` e mantém a agregação por serviço consistente.
 
@@ -111,6 +112,8 @@ O widget de disponibilidade normaliza os sinais em percentual para manter uma es
 O widget de saúde HTTP por rota usa as métricas `Count` e `5xx` do API Gateway para capturar falhas vistas pelo consumidor, inclusive quando uma Lambda HTTP retorna resposta 5xx sem gerar `Errors` no namespace `AWS/Lambda`. O widget técnico de Lambda usa período de 60 segundos e exibe `Invocations`, `Throttles`, `ConcurrentExecutions` com estatística `Maximum` e `Duration` p95 em milissegundos. Quando uma Lambda for informada como ARN ou `nome:alias`, o dashboard usa o nome base da função na dimensão `FunctionName`.
 
 Os widgets de integrações do app dependem do `cwagent-prometheus` ativo. O agente raspa `oficina-app.default.svc:8080/q/metrics` e publica as métricas `integration_latency_ms_*` e `integration_failures_total` no namespace `ContainerInsights/Prometheus`, mantendo dimensões controladas por ambiente, integração, operação e tipo de falha.
+
+Os widgets Logs Insights do dashboard técnico mantêm a investigação operacional no próprio CloudWatch. Eles exibem eventos recentes com `request_id`, `trace_id`, rota, status HTTP e detalhes de integração sempre que esses campos existirem nos logs estruturados.
 
 ## Alertas
 

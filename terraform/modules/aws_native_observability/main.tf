@@ -62,6 +62,7 @@ locals {
   business_duration_dashboard_period_seconds = 60
   k8s_dashboard_start_y                      = local.app_metrics_dashboard_start_y + 6
   k8s_dashboard_second_row                   = local.k8s_dashboard_start_y + 6
+  logs_dashboard_start_y                     = local.k8s_dashboard_second_row + 6
 }
 
 resource "aws_cloudwatch_log_group" "app" {
@@ -933,7 +934,50 @@ resource "aws_cloudwatch_dashboard" "technical" {
             }
           }
         ] if enabled
-      ])
+      ]),
+      [
+        {
+          type   = "log"
+          x      = 0
+          y      = local.logs_dashboard_start_y
+          width  = 12
+          height = 6
+          properties = {
+            title  = "Logs recentes de falhas de OS"
+            region = var.region
+            view   = "table"
+            query  = "SOURCE '${var.app_log_group_name}' | fields @timestamp, mdc.request_id, mdc.trace_id, mdc.`url.path`, mdc.`http.status_code`, @message | filter @message like /HTTP request completed/ and @message like /ordem-de-servico/ and @message like /\"http.status_code\":\"5/ | sort @timestamp desc | limit 20"
+          }
+        },
+        {
+          type   = "log"
+          x      = 12
+          y      = local.logs_dashboard_start_y
+          width  = 12
+          height = 6
+          properties = {
+            title  = "Logs recentes de falhas de integracao"
+            region = var.region
+            view   = "table"
+            query  = "SOURCE '${var.app_log_group_name}' | fields @timestamp, mdc.request_id, mdc.trace_id, mdc.integration_name, mdc.integration_operation, mdc.integration_failure_type, @message | filter @message like /Falha em integracao externa/ | sort @timestamp desc | limit 20"
+          }
+        }
+      ],
+      [
+        for enabled in [local.api_gateway_access_log_metrics_enabled] : {
+          type   = "log"
+          x      = 0
+          y      = local.logs_dashboard_start_y + 6
+          width  = 24
+          height = 6
+          properties = {
+            title  = "Access logs recentes com 5xx"
+            region = var.region
+            view   = "table"
+            query  = "SOURCE '${var.api_gateway_access_log_group_name}' | fields @timestamp, requestId, correlationId, routeKey, path, status, integrationErrorMessage, errorMessage | filter status like /^5/ | sort @timestamp desc | limit 20"
+          }
+        } if enabled
+      ]
     )
   })
 }
