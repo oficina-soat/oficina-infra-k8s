@@ -57,9 +57,10 @@ locals {
     ? regex("^arn:[^:]+:lambda:[^:]+:[^:]+:function:([^:]+)", function_name)[0]
     : split(":", function_name)[0]
   ]))
+  app_metrics_dashboard_start_y              = length(local.lambda_function_names) > 0 ? 18 : 12
   business_count_dashboard_period_seconds    = 86400
   business_duration_dashboard_period_seconds = 60
-  k8s_dashboard_start_y                      = length(local.lambda_function_names) > 0 ? 18 : 12
+  k8s_dashboard_start_y                      = local.app_metrics_dashboard_start_y + 6
   k8s_dashboard_second_row                   = local.k8s_dashboard_start_y + 6
 }
 
@@ -822,6 +823,44 @@ resource "aws_cloudwatch_dashboard" "technical" {
           }
         } if enabled
       ],
+      flatten([
+        for enabled in [var.enable_k8s_resource_metrics] : [
+          {
+            type   = "metric"
+            x      = 0
+            y      = local.app_metrics_dashboard_start_y
+            width  = 12
+            height = 6
+            properties = {
+              title   = "Latencia de integracoes do app"
+              region  = var.region
+              period  = 60
+              view    = "timeSeries"
+              stacked = false
+              metrics = [
+                [{ expression = "SEARCH('{ContainerInsights/Prometheus,ClusterName,namespace,service,env,integration,operation} MetricName=\"integration_latency_ms_max\" ClusterName=\"${var.cluster_name}\" namespace=\"default\" service=\"oficina-app\"', 'Maximum', 60)", id = "integration_latency", label = "Latencia max por integracao" }]
+              ]
+            }
+          },
+          {
+            type   = "metric"
+            x      = 12
+            y      = local.app_metrics_dashboard_start_y
+            width  = 12
+            height = 6
+            properties = {
+              title   = "Falhas de integracao por tipo"
+              region  = var.region
+              period  = 60
+              view    = "timeSeries"
+              stacked = false
+              metrics = [
+                [{ expression = "SEARCH('{ContainerInsights/Prometheus,ClusterName,namespace,service,env,integration,operation,failure_type} MetricName=\"integration_failures_total\" ClusterName=\"${var.cluster_name}\" namespace=\"default\" service=\"oficina-app\"', 'Sum', 60)", id = "integration_failures", label = "Falhas por integracao/tipo" }]
+              ]
+            }
+          }
+        ] if enabled
+      ]),
       flatten([
         for enabled in [var.enable_k8s_resource_metrics] : [
           {

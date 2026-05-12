@@ -17,6 +17,7 @@ Esta etapa conecta a base vendor-neutral da suíte Oficina a serviços nativos d
 - `CloudWatch Metrics`
   - latência agregada, latência de integração, 4xx, 5xx e latência por rota do HTTP API via métricas nativas detalhadas do API Gateway
 - CPU, throttling, memória e rede dos pods/containers do cluster via `cloudwatch-agent` mínimo, raspando `cAdvisor`
+- latência e falhas de integração do `oficina-app` via scrape Prometheus de `/q/metrics`
 - `CloudWatch Dashboard`
   - um dashboard para métricas negociais
   - um dashboard separado para métricas técnicas
@@ -96,6 +97,7 @@ O dashboard `oficina-lab-technical-observability` concentra as métricas técnic
 - latência agregada da API, respostas 5xx e latência p95 por rota
 - latência de integração e respostas 4xx do API Gateway
 - disponibilidade por serviço, com healthchecks do `oficina-app` e percentual sem 5xx do API Gateway
+- latência e falhas de integração por integração/operação
 - saúde HTTP por rota da API, calculada por `Count` e `5xx`
 - volume, throttles, concorrência e duração p95 das Lambdas configuradas
 - CPU, throttling, memória e rede dos recursos k8s agrupados por serviço
@@ -107,6 +109,8 @@ Para HTTP API, a latência p95 por rota usa as dimensões detalhadas `ApiId`, `M
 O widget de disponibilidade normaliza os sinais em percentual para manter uma escala única: os healthchecks `live` e `ready` do Route 53 aparecem como `0%` ou `100%`, enquanto o API Gateway usa métricas nativas para estimar percentual sem 5xx no período. Cada série inclui o nome do serviço no rótulo.
 
 O widget de saúde HTTP por rota usa as métricas `Count` e `5xx` do API Gateway para capturar falhas vistas pelo consumidor, inclusive quando uma Lambda HTTP retorna resposta 5xx sem gerar `Errors` no namespace `AWS/Lambda`. O widget técnico de Lambda usa período de 60 segundos e exibe `Invocations`, `Throttles`, `ConcurrentExecutions` com estatística `Maximum` e `Duration` p95 em milissegundos. Quando uma Lambda for informada como ARN ou `nome:alias`, o dashboard usa o nome base da função na dimensão `FunctionName`.
+
+Os widgets de integrações do app dependem do `cwagent-prometheus` ativo. O agente raspa `oficina-app.default.svc:8080/q/metrics` e publica as métricas `integration_latency_ms_*` e `integration_failures_total` no namespace `ContainerInsights/Prometheus`, mantendo dimensões controladas por ambiente, integração, operação e tipo de falha.
 
 ## Alertas
 
