@@ -540,6 +540,136 @@ resource "aws_cloudwatch_metric_alarm" "os_processing_failures_critical" {
   tags          = var.tags
 }
 
+resource "aws_cloudwatch_metric_alarm" "k8s_memory_warning" {
+  count = var.enabled && var.enable_k8s_resource_metrics ? 1 : 0
+
+  alarm_name          = "oficina-${var.environment}-k8s-memory-warning"
+  alarm_description   = "Warning: uso medio de memoria do ${var.k8s_app_namespace}/${var.k8s_app_service_name} acima do limite."
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  threshold           = var.k8s_memory_warning_threshold_bytes
+  metric_name         = "container_memory_working_set_bytes"
+  namespace           = "ContainerInsights/Prometheus"
+  period              = var.alarm_period_seconds
+  statistic           = "Average"
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    ClusterName = var.cluster_name
+    namespace   = var.k8s_app_namespace
+    service     = var.k8s_app_service_name
+  }
+
+  alarm_actions = local.warning_alarm_actions
+  ok_actions    = local.warning_alarm_actions
+  tags          = var.tags
+}
+
+resource "aws_cloudwatch_metric_alarm" "k8s_memory_critical" {
+  count = var.enabled && var.enable_k8s_resource_metrics ? 1 : 0
+
+  alarm_name          = "oficina-${var.environment}-k8s-memory-critical"
+  alarm_description   = "Critical: uso medio de memoria do ${var.k8s_app_namespace}/${var.k8s_app_service_name} acima do limite severo."
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  threshold           = var.k8s_memory_critical_threshold_bytes
+  metric_name         = "container_memory_working_set_bytes"
+  namespace           = "ContainerInsights/Prometheus"
+  period              = var.alarm_period_seconds
+  statistic           = "Average"
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    ClusterName = var.cluster_name
+    namespace   = var.k8s_app_namespace
+    service     = var.k8s_app_service_name
+  }
+
+  alarm_actions = local.critical_alarm_actions
+  ok_actions    = local.critical_alarm_actions
+  tags          = var.tags
+}
+
+resource "aws_cloudwatch_metric_alarm" "k8s_cpu_throttling_warning" {
+  count = var.enabled && var.enable_k8s_resource_metrics ? 1 : 0
+
+  alarm_name          = "oficina-${var.environment}-k8s-cpu-throttling-warning"
+  alarm_description   = "Warning: throttling de CPU do ${var.k8s_app_namespace}/${var.k8s_app_service_name} acima do limite."
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  threshold           = var.k8s_cpu_throttling_warning_rate
+  treat_missing_data  = "notBreaching"
+
+  metric_query {
+    id          = "throttle_rate"
+    expression  = "RATE(throttle_total)"
+    label       = "Taxa de throttling CPU"
+    return_data = true
+  }
+
+  metric_query {
+    id          = "throttle_total"
+    return_data = false
+
+    metric {
+      metric_name = "container_cpu_cfs_throttled_seconds_total"
+      namespace   = "ContainerInsights/Prometheus"
+      period      = var.alarm_period_seconds
+      stat        = "Average"
+
+      dimensions = {
+        ClusterName = var.cluster_name
+        namespace   = var.k8s_app_namespace
+        service     = var.k8s_app_service_name
+      }
+    }
+  }
+
+  alarm_actions = local.warning_alarm_actions
+  ok_actions    = local.warning_alarm_actions
+  tags          = var.tags
+}
+
+resource "aws_cloudwatch_metric_alarm" "k8s_cpu_throttling_critical" {
+  count = var.enabled && var.enable_k8s_resource_metrics ? 1 : 0
+
+  alarm_name          = "oficina-${var.environment}-k8s-cpu-throttling-critical"
+  alarm_description   = "Critical: throttling de CPU do ${var.k8s_app_namespace}/${var.k8s_app_service_name} acima do limite severo."
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  threshold           = var.k8s_cpu_throttling_critical_rate
+  treat_missing_data  = "notBreaching"
+
+  metric_query {
+    id          = "throttle_rate"
+    expression  = "RATE(throttle_total)"
+    label       = "Taxa de throttling CPU"
+    return_data = true
+  }
+
+  metric_query {
+    id          = "throttle_total"
+    return_data = false
+
+    metric {
+      metric_name = "container_cpu_cfs_throttled_seconds_total"
+      namespace   = "ContainerInsights/Prometheus"
+      period      = var.alarm_period_seconds
+      stat        = "Average"
+
+      dimensions = {
+        ClusterName = var.cluster_name
+        namespace   = var.k8s_app_namespace
+        service     = var.k8s_app_service_name
+      }
+    }
+  }
+
+  alarm_actions = local.critical_alarm_actions
+  ok_actions    = local.critical_alarm_actions
+  tags          = var.tags
+}
+
 resource "aws_cloudwatch_dashboard" "this" {
   count = var.enabled && var.enable_dashboard ? 1 : 0
 

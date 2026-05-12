@@ -110,6 +110,18 @@ variable "lambda_function_names" {
   default     = []
 }
 
+variable "k8s_app_namespace" {
+  type        = string
+  description = "Namespace Kubernetes do servico principal monitorado nos alarmes de consumo."
+  default     = "default"
+}
+
+variable "k8s_app_service_name" {
+  type        = string
+  description = "Nome do servico principal monitorado nos alarmes de consumo Kubernetes."
+  default     = "oficina-app"
+}
+
 variable "enable_route53_healthchecks" {
   type        = bool
   description = "Quando true, cria health checks Route 53 para live e ready."
@@ -192,6 +204,30 @@ variable "os_processing_failures_critical_threshold" {
   type        = number
   description = "Quantidade de falhas de processamento de OS no periodo para critical."
   default     = 3
+}
+
+variable "k8s_memory_warning_threshold_bytes" {
+  type        = number
+  description = "Uso medio de memoria do servico Kubernetes principal para warning, em bytes."
+  default     = 805306368
+}
+
+variable "k8s_memory_critical_threshold_bytes" {
+  type        = number
+  description = "Uso medio de memoria do servico Kubernetes principal para critical, em bytes."
+  default     = 943718400
+}
+
+variable "k8s_cpu_throttling_warning_rate" {
+  type        = number
+  description = "Taxa de throttling de CPU do servico Kubernetes principal para warning, em segundos por segundo."
+  default     = 0.10
+}
+
+variable "k8s_cpu_throttling_critical_rate" {
+  type        = number
+  description = "Taxa de throttling de CPU do servico Kubernetes principal para critical, em segundos por segundo."
+  default     = 0.25
 }
 
 variable "alarm_period_seconds" {

@@ -519,6 +519,30 @@ variable "observability_os_processing_failures_critical_threshold" {
   default     = 3
 }
 
+variable "observability_k8s_memory_warning_threshold_bytes" {
+  type        = number
+  description = "Uso medio de memoria do oficina-app para warning, em bytes."
+  default     = 805306368
+}
+
+variable "observability_k8s_memory_critical_threshold_bytes" {
+  type        = number
+  description = "Uso medio de memoria do oficina-app para critical, em bytes."
+  default     = 943718400
+}
+
+variable "observability_k8s_cpu_throttling_warning_rate" {
+  type        = number
+  description = "Taxa de throttling de CPU do oficina-app para warning, em segundos por segundo."
+  default     = 0.10
+}
+
+variable "observability_k8s_cpu_throttling_critical_rate" {
+  type        = number
+  description = "Taxa de throttling de CPU do oficina-app para critical, em segundos por segundo."
+  default     = 0.25
+}
+
 variable "observability_alarm_period_seconds" {
   type        = number
   description = "Periodo base dos alarmes de negocio, em segundos."

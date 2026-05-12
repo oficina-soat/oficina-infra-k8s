@@ -138,6 +138,10 @@ Alarmes mínimos:
 - `integration-failures-critical`
 - `os-processing-failures-warning`
 - `os-processing-failures-critical`
+- `k8s-memory-warning`
+- `k8s-memory-critical`
+- `k8s-cpu-throttling-warning`
+- `k8s-cpu-throttling-critical`
 
 Para receber e-mail real, configure `OBSERVABILITY_ALERT_EMAIL_ENDPOINTS` com uma lista JSON, por exemplo:
 
