@@ -14,7 +14,7 @@ Esta etapa conecta a base vendor-neutral da suíte Oficina a serviços nativos d
   - `IntegrationFailuresTotal`
   - `OsProcessingFailuresTotal`
 - `CloudWatch Metrics`
-  - latência agregada e por rota do HTTP API via métricas nativas detalhadas do API Gateway
+  - latência agregada, latência de integração, 4xx, 5xx e latência por rota do HTTP API via métricas nativas detalhadas do API Gateway
 - CPU, throttling, memória e rede dos pods/containers do cluster via `cloudwatch-agent` mínimo, raspando `cAdvisor`
 - `CloudWatch Dashboard`
   - um dashboard para métricas negociais
@@ -92,6 +92,7 @@ O dashboard negocial abre por padrão com janela de 7 dias e `periodOverride=inh
 O dashboard `oficina-lab-technical-observability` concentra as métricas técnicas:
 
 - latência agregada da API, respostas 5xx e latência p95 por rota
+- latência de integração e respostas 4xx do API Gateway
 - disponibilidade por serviço, com healthchecks do `oficina-app` e percentual sem 5xx do API Gateway
 - saúde HTTP por rota da API, calculada por `Count` e `5xx`
 - volume, throttles, concorrência e duração p95 das Lambdas configuradas
@@ -122,6 +123,8 @@ Alarmes mínimos:
 - `api-route-<hash>-latency-critical` para cada rota publicada no HTTP API
 - `api-5xx-warning`
 - `api-5xx-critical`
+- `api-4xx-warning`
+- `api-4xx-critical`
 - `integration-failures-warning`
 - `integration-failures-critical`
 - `os-processing-failures-warning`

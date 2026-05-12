@@ -386,6 +386,8 @@ module "aws_native_observability" {
   api_latency_critical_threshold_ms         = var.observability_api_latency_critical_threshold_ms
   api_5xx_warning_threshold                 = var.observability_api_5xx_warning_threshold
   api_5xx_critical_threshold                = var.observability_api_5xx_critical_threshold
+  api_4xx_warning_threshold                 = var.observability_api_4xx_warning_threshold
+  api_4xx_critical_threshold                = var.observability_api_4xx_critical_threshold
   integration_failures_warning_threshold    = var.observability_integration_failures_warning_threshold
   integration_failures_critical_threshold   = var.observability_integration_failures_critical_threshold
   os_processing_failures_warning_threshold  = var.observability_os_processing_failures_warning_threshold

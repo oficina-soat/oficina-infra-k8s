@@ -389,6 +389,54 @@ resource "aws_cloudwatch_metric_alarm" "api_5xx_critical" {
   tags          = var.tags
 }
 
+resource "aws_cloudwatch_metric_alarm" "api_4xx_warning" {
+  count = local.api_gateway_latency_alarms_enabled ? 1 : 0
+
+  alarm_name          = "oficina-${var.environment}-api-4xx-warning"
+  alarm_description   = "Warning: respostas 4xx detectadas no API Gateway."
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  evaluation_periods  = 1
+  threshold           = var.api_4xx_warning_threshold
+  metric_name         = "4xx"
+  namespace           = "AWS/ApiGateway"
+  period              = var.alarm_period_seconds
+  statistic           = "Sum"
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    ApiId = var.api_gateway_id
+    Stage = var.api_gateway_stage_name
+  }
+
+  alarm_actions = local.warning_alarm_actions
+  ok_actions    = local.warning_alarm_actions
+  tags          = var.tags
+}
+
+resource "aws_cloudwatch_metric_alarm" "api_4xx_critical" {
+  count = local.api_gateway_latency_alarms_enabled ? 1 : 0
+
+  alarm_name          = "oficina-${var.environment}-api-4xx-critical"
+  alarm_description   = "Critical: volume alto de respostas 4xx no API Gateway."
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  evaluation_periods  = 1
+  threshold           = var.api_4xx_critical_threshold
+  metric_name         = "4xx"
+  namespace           = "AWS/ApiGateway"
+  period              = var.alarm_period_seconds
+  statistic           = "Sum"
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    ApiId = var.api_gateway_id
+    Stage = var.api_gateway_stage_name
+  }
+
+  alarm_actions = local.critical_alarm_actions
+  ok_actions    = local.critical_alarm_actions
+  tags          = var.tags
+}
+
 resource "aws_cloudwatch_metric_alarm" "integration_failures_warning" {
   count = var.enabled ? 1 : 0
 
@@ -563,7 +611,9 @@ resource "aws_cloudwatch_dashboard" "technical" {
             stacked = false
             metrics = [
               ["AWS/ApiGateway", "Latency", "ApiId", var.api_gateway_id, "Stage", var.api_gateway_stage_name, { label = "p95", stat = "p95" }],
+              [".", "IntegrationLatency", ".", ".", ".", ".", { label = "Integracao p95", stat = "p95" }],
               [".", "Latency", ".", ".", ".", ".", { label = "Media", stat = "Average" }],
+              [".", "4xx", ".", ".", ".", ".", { label = "4xx", stat = "Sum", yAxis = "right" }],
               [".", "5xx", ".", ".", ".", ".", { label = "5xx", stat = "Sum", yAxis = "right" }]
             ]
           }

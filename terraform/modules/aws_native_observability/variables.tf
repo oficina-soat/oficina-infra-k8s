@@ -158,6 +158,18 @@ variable "api_5xx_critical_threshold" {
   default     = 3
 }
 
+variable "api_4xx_warning_threshold" {
+  type        = number
+  description = "Quantidade de respostas 4xx no API Gateway para warning."
+  default     = 10
+}
+
+variable "api_4xx_critical_threshold" {
+  type        = number
+  description = "Quantidade de respostas 4xx no API Gateway para critical."
+  default     = 30
+}
+
 variable "integration_failures_warning_threshold" {
   type        = number
   description = "Quantidade de falhas de integracao no periodo para warning."
