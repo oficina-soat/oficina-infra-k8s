@@ -153,6 +153,7 @@ Variáveis opcionais:
 - `OTEL_METRICS_EXPORTER`: default `none`
 - `OTEL_LOGS_EXPORTER`: default `none`
 - `OBSERVABILITY_ENABLED`: default `true`; liga a stack AWS-native de observabilidade
+- `OBSERVABILITY_ENABLE_DASHBOARD`: default `true`; quando `true`, o deploy aplica e verifica explicitamente os dashboards CloudWatch de observabilidade mesmo em execuções Terraform direcionadas por `TERRAFORM_APPLY_TARGETS`
 - `OBSERVABILITY_ENABLE_K8S_RESOURCE_METRICS`: default `true`; quando `false`, o deploy aplica `cwagent-prometheus` com `replicas=0`
 - `OBSERVABILITY_AWS_CREDENTIALS_SECRET_ENABLED`: default `true`; cria uma secret Kubernetes com as credenciais AWS do runner para os coletores publicarem no CloudWatch
 - `OBSERVABILITY_LAMBDA_FUNCTION_NAMES`: lista JSON de Lambdas exibidas no dashboard técnico; default `["oficina-auth-lambda-lab","oficina-notificacao-lambda-lab"]`
