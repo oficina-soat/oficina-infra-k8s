@@ -236,6 +236,33 @@ data:
                     "^container_network_receive_bytes_total$",
                     "^container_network_transmit_bytes_total$"
                   ]
+                },
+                {
+                  "source_labels": ["ClusterName", "namespace", "service"],
+                  "label_matcher": "^.+;default;oficina-app$",
+                  "dimensions": [
+                    ["ClusterName", "namespace", "service"],
+                    ["ClusterName", "namespace", "service", "env"],
+                    ["ClusterName", "namespace", "service", "env", "integration", "operation"]
+                  ],
+                  "metric_selectors": [
+                    "^integration_latency_ms_count$",
+                    "^integration_latency_ms_sum$",
+                    "^integration_latency_ms_max$"
+                  ]
+                },
+                {
+                  "source_labels": ["ClusterName", "namespace", "service"],
+                  "label_matcher": "^.+;default;oficina-app$",
+                  "dimensions": [
+                    ["ClusterName", "namespace", "service"],
+                    ["ClusterName", "namespace", "service", "env"],
+                    ["ClusterName", "namespace", "service", "env", "integration", "operation"],
+                    ["ClusterName", "namespace", "service", "env", "integration", "operation", "failure_type"]
+                  ],
+                  "metric_selectors": [
+                    "^integration_failures_total$"
+                  ]
                 }
               ]
             }
@@ -289,6 +316,15 @@ data:
             regex: ^(.+)-[a-z0-9]{5}$
             target_label: service
             replacement: $1
+      - job_name: oficina-app
+        metrics_path: /q/metrics
+        static_configs:
+          - targets:
+              - oficina-app.default.svc:8080
+            labels:
+              ClusterName: OBSERVABILITY_CLUSTER_NAME_PLACEHOLDER
+              namespace: default
+              service: oficina-app
 ---
 apiVersion: apps/v1
 kind: Deployment

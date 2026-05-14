@@ -379,6 +379,8 @@ module "aws_native_observability" {
   metric_namespace                          = var.observability_metric_namespace
   enable_dashboard                          = var.observability_enable_dashboard
   enable_k8s_resource_metrics               = var.observability_enable_k8s_resource_metrics
+  k8s_app_namespace                         = "default"
+  k8s_app_service_name                      = "oficina-app"
   lambda_function_names                     = local.observability_lambda_function_names
   enable_route53_healthchecks               = var.observability_enable_route53_healthchecks
   alert_email_endpoints                     = var.observability_alert_email_endpoints
@@ -386,10 +388,16 @@ module "aws_native_observability" {
   api_latency_critical_threshold_ms         = var.observability_api_latency_critical_threshold_ms
   api_5xx_warning_threshold                 = var.observability_api_5xx_warning_threshold
   api_5xx_critical_threshold                = var.observability_api_5xx_critical_threshold
+  api_4xx_warning_threshold                 = var.observability_api_4xx_warning_threshold
+  api_4xx_critical_threshold                = var.observability_api_4xx_critical_threshold
   integration_failures_warning_threshold    = var.observability_integration_failures_warning_threshold
   integration_failures_critical_threshold   = var.observability_integration_failures_critical_threshold
   os_processing_failures_warning_threshold  = var.observability_os_processing_failures_warning_threshold
   os_processing_failures_critical_threshold = var.observability_os_processing_failures_critical_threshold
+  k8s_memory_warning_threshold_bytes        = var.observability_k8s_memory_warning_threshold_bytes
+  k8s_memory_critical_threshold_bytes       = var.observability_k8s_memory_critical_threshold_bytes
+  k8s_cpu_throttling_warning_rate           = var.observability_k8s_cpu_throttling_warning_rate
+  k8s_cpu_throttling_critical_rate          = var.observability_k8s_cpu_throttling_critical_rate
   alarm_period_seconds                      = var.observability_alarm_period_seconds
 
   tags = {

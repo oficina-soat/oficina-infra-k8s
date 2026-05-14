@@ -24,6 +24,7 @@ TERRAFORM_ACTION="${TERRAFORM_ACTION:-apply}"
 TERRAFORM_APPLY_TARGETS="${TERRAFORM_APPLY_TARGETS:-}"
 TERRAFORM_DESTROY_TARGETS="${TERRAFORM_DESTROY_TARGETS:-}"
 TERRAFORM_REQUIRE_REMOTE_STATE="${TERRAFORM_REQUIRE_REMOTE_STATE:-false}"
+TERRAFORM_REFRESH_OBSERVABILITY_DASHBOARDS="${TERRAFORM_REFRESH_OBSERVABILITY_DASHBOARDS:-true}"
 BACKEND_S3_TEMPLATE="${TERRAFORM_DIR}/backend.s3.tf.example"
 EFFECTIVE_TF_STATE_BUCKET=""
 backend_override_file=""
@@ -64,6 +65,7 @@ normalize_optional_envs() {
   unset_if_empty "TF_VAR_api_gateway_http_routes"
   unset_if_empty "TF_VAR_api_gateway_jwt_authorizers"
   unset_if_empty "TF_VAR_api_gateway_lambda_routes"
+  unset_if_empty "TF_VAR_observability_enable_dashboard"
   unset_if_empty "TF_VAR_observability_lambda_function_names"
   unset_if_empty "TF_VAR_oficina_app_api_gateway_jwt_issuer"
   unset_if_empty "TF_VAR_oficina_app_api_gateway_jwt_audience"
@@ -368,6 +370,87 @@ terraform_apply() {
   fi
 
   terraform -chdir="${TERRAFORM_DIR}" apply "${args[@]}"
+}
+
+is_falsey_value() {
+  case "${1:-}" in
+    false | FALSE | False | 0 | no | NO | No)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+should_refresh_observability_dashboards() {
+  if is_falsey_value "${TERRAFORM_REFRESH_OBSERVABILITY_DASHBOARDS}"; then
+    return 1
+  fi
+
+  if is_falsey_value "${TF_VAR_observability_enabled:-true}"; then
+    return 1
+  fi
+
+  if is_falsey_value "${TF_VAR_observability_enable_dashboard:-true}"; then
+    return 1
+  fi
+
+  return 0
+}
+
+terraform_observability_dashboard_targets() {
+  printf '%s\n' \
+    'module.aws_native_observability[0].aws_cloudwatch_dashboard.this[0]' \
+    'module.aws_native_observability[0].aws_cloudwatch_dashboard.technical[0]'
+}
+
+terraform_apply_observability_dashboards() {
+  local args=("-input=false" "-auto-approve")
+  local target=""
+
+  if ! should_refresh_observability_dashboards; then
+    log "Atualizacao explicita dos dashboards de observabilidade desabilitada; seguindo."
+    return
+  fi
+
+  while IFS= read -r target; do
+    args+=("-target=${target}")
+  done < <(terraform_observability_dashboard_targets)
+
+  log "Garantindo atualizacao dos dashboards CloudWatch de observabilidade."
+  terraform -chdir="${TERRAFORM_DIR}" apply "${args[@]}"
+}
+
+terraform_validate_observability_dashboards_applied() {
+  local args=("-input=false" "-detailed-exitcode")
+  local target=""
+  local status=0
+
+  if ! should_refresh_observability_dashboards; then
+    return
+  fi
+
+  while IFS= read -r target; do
+    args+=("-target=${target}")
+  done < <(terraform_observability_dashboard_targets)
+
+  log "Verificando se os dashboards CloudWatch de observabilidade ficaram sem drift."
+  set +e
+  terraform -chdir="${TERRAFORM_DIR}" plan "${args[@]}"
+  status=$?
+  set -e
+
+  if [[ "${status}" -eq 0 ]]; then
+    return
+  fi
+
+  if [[ "${status}" -eq 2 ]]; then
+    echo "Os dashboards CloudWatch de observabilidade ainda possuem diferencas apos o apply." >&2
+    exit 1
+  fi
+
+  exit "${status}"
 }
 
 terraform_destroy() {
@@ -763,6 +846,8 @@ run_apply() {
   fi
 
   terraform_apply
+  terraform_apply_observability_dashboards
+  terraform_validate_observability_dashboards_applied
   write_ecr_repository_url_file
 }
 

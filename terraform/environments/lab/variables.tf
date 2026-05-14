@@ -483,6 +483,18 @@ variable "observability_api_5xx_critical_threshold" {
   default     = 3
 }
 
+variable "observability_api_4xx_warning_threshold" {
+  type        = number
+  description = "Quantidade de respostas 4xx no API Gateway para warning."
+  default     = 10
+}
+
+variable "observability_api_4xx_critical_threshold" {
+  type        = number
+  description = "Quantidade de respostas 4xx no API Gateway para critical."
+  default     = 30
+}
+
 variable "observability_integration_failures_warning_threshold" {
   type        = number
   description = "Quantidade de falhas de integracao no periodo para warning."
@@ -505,6 +517,30 @@ variable "observability_os_processing_failures_critical_threshold" {
   type        = number
   description = "Quantidade de falhas de processamento de OS no periodo para critical."
   default     = 3
+}
+
+variable "observability_k8s_memory_warning_threshold_bytes" {
+  type        = number
+  description = "Uso medio de memoria do oficina-app para warning, em bytes."
+  default     = 805306368
+}
+
+variable "observability_k8s_memory_critical_threshold_bytes" {
+  type        = number
+  description = "Uso medio de memoria do oficina-app para critical, em bytes."
+  default     = 943718400
+}
+
+variable "observability_k8s_cpu_throttling_warning_rate" {
+  type        = number
+  description = "Taxa de throttling de CPU do oficina-app para warning, em segundos por segundo."
+  default     = 0.10
+}
+
+variable "observability_k8s_cpu_throttling_critical_rate" {
+  type        = number
+  description = "Taxa de throttling de CPU do oficina-app para critical, em segundos por segundo."
+  default     = 0.25
 }
 
 variable "observability_alarm_period_seconds" {

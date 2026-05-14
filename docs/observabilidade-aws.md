@@ -11,16 +11,18 @@ Esta etapa conecta a base vendor-neutral da suíte Oficina a serviços nativos d
 - `CloudWatch Logs Metric Filters`
   - `OsCreatedTotal`
   - `OsStatusDurationMs*` por status
+  - `OsStatusTransitionsTotal*` por status de destino
   - `IntegrationFailuresTotal`
-  - `OsProcessingFailuresTotal`
+  - `OsProcessingFailuresTotal`, derivado dos logs HTTP estruturados do `oficina-app`
 - `CloudWatch Metrics`
-  - latência agregada e por rota do HTTP API via métricas nativas detalhadas do API Gateway
+  - latência agregada, latência de integração, 4xx, 5xx e latência por rota do HTTP API via métricas nativas detalhadas do API Gateway
 - CPU, throttling, memória e rede dos pods/containers do cluster via `cloudwatch-agent` mínimo, raspando `cAdvisor`
+- latência e falhas de integração do `oficina-app` via scrape Prometheus de `/q/metrics`
 - `CloudWatch Dashboard`
   - um dashboard para métricas negociais
   - um dashboard separado para métricas técnicas
 - `CloudWatch Alarms`
-  - warning/critical para latência, integração, processamento de OS e healthchecks
+  - warning/critical para latência, integração, processamento de OS detectado no app e healthchecks
 - `Route 53 Health Checks`
   - `live` e `ready`, com integração nativa ao CloudWatch
 - `SNS`
@@ -83,19 +85,23 @@ O dashboard `oficina-lab-observability` concentra as métricas negociais:
 
 - volume diário de OS
 - tempo médio por status
+- transições diárias por status
 - falhas diárias de integração e processamento
 
-Os widgets negociais de contagem usam período de 1 dia e estatística `Sum`, exibindo buckets diários para volume de OS e falhas. O widget de tempo médio por status continua com período de 60 segundos e `setPeriodToTimeRange`, para resumir a janela selecionada no dashboard. Como esses sinais vêm de `CloudWatch Logs Metric Filters`, a atualização ainda depende da ingestão dos logs estruturados do `oficina-app` e da publicação padrão de métricas do CloudWatch.
+Os widgets negociais de contagem usam período de 1 dia e estatística `Sum`, exibindo buckets diários para volume de OS e falhas. Os widgets `Volume diario de OS` e `Falhas diarias de integracao e processamento` usam `liveData` para exibir o bucket parcial do dia atual até o momento da visualização; esse último ponto pode variar enquanto o dia ainda não fechou. O widget de tempo médio por status continua com período de 60 segundos e `setPeriodToTimeRange`, para resumir a janela selecionada no dashboard. Como esses sinais vêm de `CloudWatch Logs Metric Filters`, a atualização ainda depende da ingestão dos logs estruturados do `oficina-app` e da publicação padrão de métricas do CloudWatch.
 
 O dashboard negocial abre por padrão com janela de 7 dias e `periodOverride=inherit`, para preservar os períodos configurados nos widgets e evitar que o console do CloudWatch aplique período automático incompatível com os buckets diários.
 
 O dashboard `oficina-lab-technical-observability` concentra as métricas técnicas:
 
 - latência agregada da API, respostas 5xx e latência p95 por rota
+- latência de integração e respostas 4xx do API Gateway
 - disponibilidade por serviço, com healthchecks do `oficina-app` e percentual sem 5xx do API Gateway
+- latência e falhas de integração por integração/operação
 - saúde HTTP por rota da API, calculada por `Count` e `5xx`
 - volume, throttles, concorrência e duração p95 das Lambdas configuradas
 - CPU, throttling, memória e rede dos recursos k8s agrupados por serviço
+- consultas Logs Insights para falhas recentes de OS, integrações e 5xx do gateway
 
 O dashboard técnico não exibe filesystem por serviço porque `container_fs_usage_bytes` pode não trazer labels de pod/container suficientes em todos os runtimes, especialmente com containerd/cAdvisor, o que deixa a série por `service` vazia no CloudWatch. O quarto gráfico k8s usa throttling de CPU por serviço, que é coletado pelo mesmo `cAdvisor` e mantém a agregação por serviço consistente.
 
@@ -104,6 +110,10 @@ Para HTTP API, a latência p95 por rota usa as dimensões detalhadas `ApiId`, `M
 O widget de disponibilidade normaliza os sinais em percentual para manter uma escala única: os healthchecks `live` e `ready` do Route 53 aparecem como `0%` ou `100%`, enquanto o API Gateway usa métricas nativas para estimar percentual sem 5xx no período. Cada série inclui o nome do serviço no rótulo.
 
 O widget de saúde HTTP por rota usa as métricas `Count` e `5xx` do API Gateway para capturar falhas vistas pelo consumidor, inclusive quando uma Lambda HTTP retorna resposta 5xx sem gerar `Errors` no namespace `AWS/Lambda`. O widget técnico de Lambda usa período de 60 segundos e exibe `Invocations`, `Throttles`, `ConcurrentExecutions` com estatística `Maximum` e `Duration` p95 em milissegundos. Quando uma Lambda for informada como ARN ou `nome:alias`, o dashboard usa o nome base da função na dimensão `FunctionName`.
+
+Os widgets de integrações do app dependem do `cwagent-prometheus` ativo. O agente raspa `oficina-app.default.svc:8080/q/metrics` e publica as métricas `integration_latency_ms_*` e `integration_failures_total` no namespace `ContainerInsights/Prometheus`, mantendo dimensões controladas por ambiente, integração, operação e tipo de falha.
+
+Os widgets Logs Insights do dashboard técnico mantêm a investigação operacional no próprio CloudWatch. Eles exibem eventos recentes com `request_id`, `trace_id`, rota, status HTTP e detalhes de integração sempre que esses campos existirem nos logs estruturados.
 
 ## Alertas
 
@@ -122,10 +132,16 @@ Alarmes mínimos:
 - `api-route-<hash>-latency-critical` para cada rota publicada no HTTP API
 - `api-5xx-warning`
 - `api-5xx-critical`
+- `api-4xx-warning`
+- `api-4xx-critical`
 - `integration-failures-warning`
 - `integration-failures-critical`
 - `os-processing-failures-warning`
 - `os-processing-failures-critical`
+- `k8s-memory-warning`
+- `k8s-memory-critical`
+- `k8s-cpu-throttling-warning`
+- `k8s-cpu-throttling-critical`
 
 Para receber e-mail real, configure `OBSERVABILITY_ALERT_EMAIL_ENDPOINTS` com uma lista JSON, por exemplo:
 
@@ -137,5 +153,6 @@ Para receber e-mail real, configure `OBSERVABILITY_ALERT_EMAIL_ENDPOINTS` com um
 
 - a correlação principal fica em `request_id`, `trace_id` e `span_id` nos logs estruturados
 - o API Gateway sobrescreve `X-Request-Id` com `$context.requestId`, permitindo correlacionar access logs do gateway e logs JSON do backend pelo mesmo identificador
+- os recursos dependentes do API Gateway só são criados quando IDs, endpoints ou log groups necessários estiverem preenchidos
 - a coleta k8s continua mínima e via Prometheus/cAdvisor; ela cobre consumo de recursos dos pods/containers, mas não habilita o pacote completo de Container Insights gerenciado
 - as métricas de negócio dependem dos logs estruturados permanecerem compatíveis com os filtros CloudWatch
