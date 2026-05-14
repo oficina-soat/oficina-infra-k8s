@@ -88,7 +88,7 @@ O dashboard `oficina-lab-observability` concentra as métricas negociais:
 - transições diárias por status
 - falhas diárias de integração e processamento
 
-Os widgets negociais de contagem usam período de 1 dia e estatística `Sum`, exibindo buckets diários para volume de OS e falhas. O widget de tempo médio por status continua com período de 60 segundos e `setPeriodToTimeRange`, para resumir a janela selecionada no dashboard. Como esses sinais vêm de `CloudWatch Logs Metric Filters`, a atualização ainda depende da ingestão dos logs estruturados do `oficina-app` e da publicação padrão de métricas do CloudWatch.
+Os widgets negociais de contagem usam período de 1 dia e estatística `Sum`, exibindo buckets diários para volume de OS e falhas. Os widgets `Volume diario de OS` e `Falhas diarias de integracao e processamento` usam `liveData` para exibir o bucket parcial do dia atual até o momento da visualização; esse último ponto pode variar enquanto o dia ainda não fechou. O widget de tempo médio por status continua com período de 60 segundos e `setPeriodToTimeRange`, para resumir a janela selecionada no dashboard. Como esses sinais vêm de `CloudWatch Logs Metric Filters`, a atualização ainda depende da ingestão dos logs estruturados do `oficina-app` e da publicação padrão de métricas do CloudWatch.
 
 O dashboard negocial abre por padrão com janela de 7 dias e `periodOverride=inherit`, para preservar os períodos configurados nos widgets e evitar que o console do CloudWatch aplique período automático incompatível com os buckets diários.
 

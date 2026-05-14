@@ -685,12 +685,13 @@ resource "aws_cloudwatch_dashboard" "this" {
         width  = 12
         height = 6
         properties = {
-          title   = "Volume diario de OS"
-          region  = var.region
-          stat    = "Sum"
-          period  = local.business_count_dashboard_period_seconds
-          view    = "timeSeries"
-          stacked = false
+          title    = "Volume diario de OS"
+          region   = var.region
+          stat     = "Sum"
+          period   = local.business_count_dashboard_period_seconds
+          view     = "timeSeries"
+          stacked  = false
+          liveData = true
           metrics = [
             [local.metric_namespace, "OsCreatedTotal", { id = "m1", visible = false }],
             [{ expression = "FILL(m1, 0)", id = "e1", label = "Ordens criadas por dia" }]
@@ -751,20 +752,19 @@ resource "aws_cloudwatch_dashboard" "this" {
         width  = 12
         height = 6
         properties = {
-          title   = "Falhas diarias de integracao e processamento"
-          region  = var.region
-          stat    = "Sum"
-          period  = local.business_count_dashboard_period_seconds
-          view    = "timeSeries"
-          stacked = false
-          metrics = concat(
-            [
-              [local.metric_namespace, "IntegrationFailuresTotal", { label = "Falhas de integracao por dia" }]
-            ],
-            [
-              [local.metric_namespace, "OsProcessingFailuresTotal", { label = "Falhas de processamento OS por dia" }]
-            ]
-          )
+          title    = "Falhas diarias de integracao e processamento"
+          region   = var.region
+          stat     = "Sum"
+          period   = local.business_count_dashboard_period_seconds
+          view     = "timeSeries"
+          stacked  = false
+          liveData = true
+          metrics = [
+            [local.metric_namespace, "IntegrationFailuresTotal", { id = "integration_failures", visible = false }],
+            [".", "OsProcessingFailuresTotal", { id = "processing_failures", visible = false }],
+            [{ expression = "FILL(integration_failures, 0)", id = "integration_failures_daily", label = "Falhas de integracao por dia" }],
+            [{ expression = "FILL(processing_failures, 0)", id = "processing_failures_daily", label = "Falhas de processamento OS por dia" }]
+          ]
         }
       }
     ]
