@@ -1007,7 +1007,7 @@ resource "aws_cloudwatch_dashboard" "technical" {
               view    = "timeSeries"
               stacked = false
               metrics = [
-                [{ expression = "SEARCH('{ContainerInsights/Prometheus,ClusterName,namespace,service} MetricName=\"container_cpu_usage_seconds_total\" ClusterName=\"${var.cluster_name}\"', 'Sum', 60)", id = "cpu", label = "CPU por servico" }]
+                [{ expression = "SEARCH('{ContainerInsights/Prometheus,ClusterName,namespace,service} MetricName=\"container_cpu_usage_seconds_total\" ClusterName=\"${var.cluster_name}\"', 'Sum', 60)", id = "cpu", label = "" }]
               ]
             }
           },
@@ -1024,7 +1024,7 @@ resource "aws_cloudwatch_dashboard" "technical" {
               view    = "timeSeries"
               stacked = false
               metrics = [
-                [{ expression = "SEARCH('{ContainerInsights/Prometheus,ClusterName,namespace,service} MetricName=\"container_memory_working_set_bytes\" ClusterName=\"${var.cluster_name}\"', 'Average', 60)", id = "mem", label = "Memoria por servico" }]
+                [{ expression = "SEARCH('{ContainerInsights/Prometheus,ClusterName,namespace,service} MetricName=\"container_memory_working_set_bytes\" ClusterName=\"${var.cluster_name}\"', 'Average', 60)", id = "mem", label = "" }]
               ]
             }
           },
@@ -1041,8 +1041,8 @@ resource "aws_cloudwatch_dashboard" "technical" {
               view    = "timeSeries"
               stacked = false
               metrics = [
-                [{ expression = "SEARCH('{ContainerInsights/Prometheus,ClusterName,namespace,service} MetricName=\"container_network_receive_bytes_total\" ClusterName=\"${var.cluster_name}\"', 'Sum', 60)", id = "rx", label = "Recebido" }],
-                [{ expression = "SEARCH('{ContainerInsights/Prometheus,ClusterName,namespace,service} MetricName=\"container_network_transmit_bytes_total\" ClusterName=\"${var.cluster_name}\"', 'Sum', 60)", id = "tx", label = "Transmitido" }]
+                [{ expression = "SEARCH('{ContainerInsights/Prometheus,ClusterName,namespace,service} MetricName=\"container_network_receive_bytes_total\" ClusterName=\"${var.cluster_name}\"', 'Sum', 60)", id = "rx", label = "" }],
+                [{ expression = "SEARCH('{ContainerInsights/Prometheus,ClusterName,namespace,service} MetricName=\"container_network_transmit_bytes_total\" ClusterName=\"${var.cluster_name}\"', 'Sum', 60)", id = "tx", label = "" }]
               ]
             }
           },
@@ -1059,7 +1059,7 @@ resource "aws_cloudwatch_dashboard" "technical" {
               view    = "timeSeries"
               stacked = false
               metrics = [
-                [{ expression = "SEARCH('{ContainerInsights/Prometheus,ClusterName,namespace,service} MetricName=\"container_cpu_cfs_throttled_seconds_total\" ClusterName=\"${var.cluster_name}\"', 'Sum', 60)", id = "throttle", label = "Throttling CPU por servico" }]
+                [{ expression = "SEARCH('{ContainerInsights/Prometheus,ClusterName,namespace,service} MetricName=\"container_cpu_cfs_throttled_seconds_total\" ClusterName=\"${var.cluster_name}\"', 'Sum', 60)", id = "throttle", label = "" }]
               ]
             }
           }
